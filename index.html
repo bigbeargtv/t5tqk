@@ -1520,68 +1520,7 @@ function renderQuy(){
       <div class="quy-stat"><div class="quy-stat-num">${sorted.length}</div><div class="quy-stat-lbl">Người</div></div>
     </div>
   </div>`;
-  // ── Tính nợ chưa đóng theo ngày (có cap 60k/ngày) ──
-  const unpaidByPerson={};
-  Object.entries(byDay).forEach(([date,dayMatches])=>{
-    const dayRaw={};
-    dayMatches.forEach(m=>{
-      const bet=+m.bet||DEFAULT_BET;
-      const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-      const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-      losers.forEach(n=>{if(!dayRaw[n])dayRaw[n]=0;dayRaw[n]+=bet;});
-    });
-    Object.entries(dayRaw).forEach(([name,raw])=>{
-      const capped=Math.min(raw,MAX_DEBT_PER_DAY);
-      // Tính đã trả trong ngày này
-      let paid=0;
-      dayMatches.forEach(m=>{
-        const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-        const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-        if(losers.includes(name)&&m['paid_'+name])paid+=(+m.bet||DEFAULT_BET);
-      });
-      const paidCapped=Math.min(paid,capped);
-      const remaining=capped-paidCapped;
-      if(remaining>0){
-        if(!unpaidByPerson[name])unpaidByPerson[name]={name,remaining:0,dates:[]};
-        unpaidByPerson[name].remaining+=remaining;
-        unpaidByPerson[name].dates.push({date,amount:remaining});
-      }
-    });
-  });
-  const unpaidList=Object.values(unpaidByPerson).sort((a,b)=>b.remaining-a.remaining);
-  const totalUnpaid=unpaidList.reduce((s,p)=>s+p.remaining,0);
-
-  if(unpaidList.length){
-    html+=`<div class="sl" style="margin-top:14px;color:#e55;">❌ Còn nợ chưa đóng</div>`;
-    html+=`<div style="background:#e5555510;border:1.5px solid #e5555530;border-radius:13px;padding:11px;margin-bottom:13px;">`;
-    html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid #e5555520;">
-      <span style="font-size:11px;font-weight:700;color:var(--muted);">${unpaidList.length} người còn nợ</span>
-      <span style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;color:#e55;">${fmtNum(totalUnpaid)}đ</span>
-    </div>`;
-    unpaidList.forEach(p=>{
-      const mb=mbOf(p.name);
-      const avH=mb&&mb.photo?`<img style="width:28px;height:28px;border-radius:8px;object-fit:cover;" src="${mb.photo}">`
-        :`<div class="quy-av ${mb?AVC[mb.color]:''}" style="${mb?'':'background:var(--muted);'}width:28px;height:28px;border-radius:8px;">${ini(p.name)}</div>`;
-      const datesNote=p.dates.map(d=>`${fmtDate(d.date)}: ${fmtNum(d.amount)}đ`).join(' · ');
-      html+=`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid #e5555515;">
-        ${avH}
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:800;font-size:13px;">${xe(p.name)}</div>
-          <div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${datesNote}</div>
-        </div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:900;color:#e55;white-space:nowrap;">${fmtNum(p.remaining)}đ</div>
-      </div>`;
-    });
-    html+=`<div style="font-size:10px;color:var(--muted);margin-top:7px;text-align:center;">Chọn từng ngày để đánh dấu đã nộp ↑</div>`;
-    html+='</div>';
-  } else if(saved.length){
-    html+=`<div style="text-align:center;padding:12px;background:#1a9e6015;border:1.5px solid #1a9e6030;border-radius:11px;margin-bottom:13px;">
-      <span style="font-size:22px;">✅</span>
-      <div style="font-size:12px;font-weight:800;color:var(--green);margin-top:4px;">Tất cả đã đóng quỹ đầy đủ!</div>
-    </div>`;
-  }
-
-  html+='<div class="sl" style="margin-top:4px;">BXH đóng góp nhiều nhất</div>';
+    html+='<div class="sl" style="margin-top:0">BXH đóng góp nhiều nhất</div>';
   html+='<div class="quy-h"><div></div><div>Tên</div><div style="text-align:center">Trận thua</div><div style="text-align:right">Đóng góp 💰</div></div>';
   sorted.forEach((p,i)=>{
     const rc=i===0?'r1':i===1?'r2':i===2?'r3':'';
@@ -1683,9 +1622,12 @@ function renderLedger(){
     names.forEach(name=>{
       const b=balances[name]||{fromBet:0,fromLedger:0,txns:[]};
       const mb=mbOf(name);
-      const net=b.fromLedger;
       const initBal=mb?(+mb.initialBalance||0):0;
-      const total=net+initBal;
+      // total = đã nộp + thu nhập - nợ quỹ + số dư ban đầu + thu chi thủ công
+      // fromBet = tổng nợ quỹ (chưa tính paid), fromLedger = tổng đã nộp quỹ + thu chi thủ công
+      const debtOwed=b.fromBet; // tổng phải đóng
+      const debtPaid=b.fromLedger; // tổng đã nộp quỹ + giao dịch thủ công
+      const total=initBal+debtPaid-debtOwed; // âm = còn nợ
       const domId='ldg-p-'+name.replace(/\W/g,'_');
       const isOpen=_openDays.has(domId);
       const borderCol=total>=0?'#1a9e6030':'#e5555530';
@@ -1745,12 +1687,15 @@ function renderLedger(){
         <div class="ldg-person-row" onclick="toggleMatchDay('${domId}')" style="border:none;border-radius:0;margin:0;">
           ${av}
           <div style="flex:1;">
-            <div style="font-weight:800;font-size:12px;">${xe(name)}</div>
-            <div style="font-size:10px;margin-top:1px;color:${total>=0?'var(--green)':'#e55'};font-weight:700;">
-              ${total>=0?'+':'-'}${fmtNum(Math.abs(total))}đ ${total>=0?'✅':'⚠️'}
+            <div style="font-weight:800;font-size:13px;">${xe(name)}</div>
+            <div style="font-size:11px;margin-top:2px;font-weight:800;color:${total>=0?'var(--green)':'#e55'};">
+              ${total<0?'⚠️ Còn nợ '+fmtNum(Math.abs(total))+'đ':total===0?'✅ Đã đóng đủ':'✅ Dư '+fmtNum(total)+'đ'}
             </div>
           </div>
-          <span style="font-size:10px;color:var(--muted);" id="${domId}-arrow">${isOpen?'▲':'▼'}</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;color:${total<0?'#e55':'var(--green)'}">${total<0?'-':'+'}${fmtNum(Math.abs(total))}đ</span>
+            <span style="font-size:10px;color:var(--muted);" id="${domId}-arrow">${isOpen?'▲':'▼'}</span>
+          </div>
         </div>
         <div id="${domId}" style="display:${isOpen?'block':'none'};">
           ${txHtml||'<div style="padding:10px 11px;font-size:11px;color:var(--muted);">Chưa có giao dịch nào.</div>'}
