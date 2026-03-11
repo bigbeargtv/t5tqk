@@ -628,7 +628,7 @@ function applyRemoteData(data){
   if(data.members!==undefined&&JSON.stringify(data.members)!==JSON.stringify(members)){members=data.members||[];memberUid=data.memberUid||1;changed=true;}
   if(data.matches!==undefined&&JSON.stringify(data.matches)!==JSON.stringify(matches)){matches=data.matches||[];matchUid=data.matchUid||1;changed=true;}
   if(data.sessionDate!==undefined&&data.sessionDate!==sessionDate){sessionDate=data.sessionDate||'';changed=true;}
-  if(changed){renderMembers();renderMatches();const d=document.getElementById('sessionDate');if(d&&sessionDate)d.value=sessionDate;}
+  if(changed){renderMembers();renderMatches();}
 }
 async function load(){
   let connected=false;
@@ -1039,7 +1039,12 @@ function saveMatch(id){
   if(!isAdmin)return;
   const m=matches.find(m=>m.id===id);if(!m)return;
   if(!m.t1p1||!m.t2p1||(m.s1===''&&m.s2===''&&!m.winner))return;
-  if(m.bet===undefined||m.bet===null)m.bet=DEFAULT_BET;
+  if(!m.bet||m.bet<=0)m.bet=DEFAULT_BET;
+  // Đảm bảo winner nhất quán với tỉ số
+  if(m.s1!==''&&m.s2!==''){
+    const s1=+m.s1,s2=+m.s2;
+    if(s1>s2)m.winner='A';else if(s2>s1)m.winner='B';else m.winner='';
+  }
   m.saved=true;renderMatches();renderHist();debounceSave();
 }
 
@@ -1200,7 +1205,9 @@ function renderBXH(){
     stats[k].pf+=pf;stats[k].pa+=pa;if(won)stats[k].w++;else stats[k].l++;
   }
   saved.forEach(m=>{
-    const s1=+m.s1,s2=+m.s2,w1=s1>s2;
+    const s1=+m.s1,s2=+m.s2;
+    const w1=m.winner?m.winner==='A':(s1!==s2?s1>s2:null);
+    if(w1===null)return; // hòa hoặc chưa có kết quả rõ
     [m.t1p1,m.t1p2].forEach(p=>addP(p,s1,s2,w1));
     [m.t2p1,m.t2p2].forEach(p=>addP(p,s2,s1,!w1));
   });
@@ -1299,7 +1306,7 @@ function renderHist(){
         ${ms.map(m=>{
           const t1=[m.t1p1,m.t1p2].filter(Boolean).join(' & ')||'Đội A';
           const t2=[m.t2p1,m.t2p2].filter(Boolean).join(' & ')||'Đội B';
-          const w1=+m.s1>+m.s2;
+          const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
           const av=n=>{const mb=mbOf(n);if(!mb)return'';return mb.photo?`<img class="av-img-small" src="${mb.photo}" style="width:20px;height:20px;border-radius:5px;">` :`<div class="bxh-av ${AVC[mb.color]}" style="width:20px;height:20px;font-size:10px;border-radius:5px;">${ini(n)}</div>`;};
           const betH=m.bet?`<span style="font-size:10px;color:var(--green);font-weight:800;">💰${fmtNum(m.bet)}đ</span>`:'';
           const delBtn=isAdmin?`<button onclick="delMatch(${m.id})" class="del-btn admin-only" style="padding:3px 6px;font-size:13px;">🗑</button>`:'';
@@ -1339,7 +1346,7 @@ function initQuyFilter(){
   let mH='';
   const mn=['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
   for(let i=0;i<12;i++){const mon=String(i+1).padStart(2,'0');const key=activeYear+'-'+mon;
-    const has=matches.some(m=>m.saved&&m.bet&&m.bet>0&&m.date&&m.date.startsWith(key));const on=quyFilter.mode==='month'&&quyFilter.from===key;
+    const has=matches.some(m=>m.saved&&m.date&&m.date.startsWith(key));const on=quyFilter.mode==='month'&&quyFilter.from===key;
     if(has)mH+='<span class="fpill '+(on?'on':'')+'" onclick="setQuyFilter(\'month\',\''+key+'\')">'+mn[i]+'</span>';}
   document.getElementById('qfilter-months').innerHTML=mH;
   // Days (when month selected)
@@ -1365,7 +1372,7 @@ function applyQuyFilter(){
   quyFilter={mode:'custom',from,to};renderQuy();
 }
 function getQuyFiltered(){
-  const saved=matches.filter(m=>m.saved&&m.bet&&m.bet>0&&m.date);
+  const saved=matches.filter(m=>m.saved&&m.date&&(+m.bet||DEFAULT_BET)>0);
   if(quyFilter.mode==='all')return saved;
   if(quyFilter.mode==='year')return saved.filter(m=>m.date.startsWith(quyFilter.from));
   if(quyFilter.mode==='month')return saved.filter(m=>m.date.startsWith(quyFilter.from));
@@ -1453,7 +1460,13 @@ function renderQuyDay(date,saved){
 }
 function togglePaidFull(name,date){
   if(!isAdmin)return;
-  const entries=matches.filter(m=>m.saved&&m.bet>0&&m.date===date&&[m.t1p1,m.t1p2,m.t2p1,m.t2p2].includes(name));
+  // Chỉ toggle trận mà người đó thực sự thua
+  const entries=matches.filter(m=>{
+    if(!m.saved||m.date!==date)return false;
+    const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
+    const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
+    return losers.includes(name);
+  });
   if(!entries.length)return;
   const allPaid=entries.every(m=>m['paid_'+name]);
   entries.forEach(m=>{m['paid_'+name]=!allPaid;});
@@ -1621,7 +1634,7 @@ function renderLedger(){
       // Bet transactions
       const betMs=matches.filter(m=>m.saved&&m.bet>0&&[m.t1p1,m.t1p2,m.t2p1,m.t2p2].includes(name));
       betMs.sort((a,b)=>b.date.localeCompare(a.date)).forEach(m=>{
-        const w1=+m.s1>+m.s2;const isLoser=w1?[m.t2p1,m.t2p2].includes(name):[m.t1p1,m.t1p2].includes(name);
+        const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);const isLoser=w1?[m.t2p1,m.t2p2].includes(name):[m.t1p1,m.t1p2].includes(name);
         if(!isLoser)return;
         const isPaid=m['paid_'+name];const betV=+m.bet||DEFAULT_BET;
         txHtml+=`<div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-top:1px solid var(--bdr);background:var(--s1);">
@@ -1839,17 +1852,20 @@ function buildStatsHTML(name){
 // ─── INIT ───
 (async function(){
   document.getElementById('saveLabel').textContent='Đang tải...';
-  await load();
-  await loadLogo();
-  checkSavedAdminSession();
-  const dateEl=document.getElementById('sessionDate');
-  dateEl.value=sessionDate||todayStr();
-  dateEl.addEventListener('change',()=>{sessionDate=dateEl.value;debounceSave();});
-  renderMembers();renderMatches();
-  // Restore tab
-  try{const t=localStorage.getItem('t5tqk_tab');if(t&&document.getElementById(t))goTab(t);}catch(e){}
-  // Hide loading
-  const ov=document.getElementById('loadingOverlay');if(ov)ov.style.display='none';
+  try{
+    await load();
+    await loadLogo();
+    checkSavedAdminSession();
+    renderMembers();renderMatches();
+    // Restore tab
+    try{const t=localStorage.getItem('t5tqk_tab');if(t&&document.getElementById(t))goTab(t);}catch(e){}
+  }catch(err){
+    console.error('Init error:',err);
+    document.getElementById('saveLabel').textContent='⚠️ Lỗi khởi động';
+  }finally{
+    // Luôn ẩn loading dù có lỗi
+    const ov=document.getElementById('loadingOverlay');if(ov)ov.style.display='none';
+  }
   window.addEventListener('beforeunload',function(e){
     if(pendingSave||saveTimer){e.preventDefault();e.returnValue='Dữ liệu chưa lưu!';}
   });
