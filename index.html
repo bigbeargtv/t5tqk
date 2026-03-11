@@ -549,7 +549,7 @@ nav::-webkit-scrollbar{display:none;}
 const AVC=['avc0','avc1','avc2','avc3','avc4','avc5','avc6','avc7','avc8','avc9'];
 const DAYS=['Chủ Nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
 const MONTHS=['tháng 1','tháng 2','tháng 3','tháng 4','tháng 5','tháng 6','tháng 7','tháng 8','tháng 9','tháng 10','tháng 11','tháng 12'];
-const ADMIN_PW = 'tqk2025';
+const ADMIN_PW = 'tqk123';
 const ADMIN_SESSION_KEY = 't5tqk_admin';
 const DEFAULT_BET = 20000; // 20,000đ/trận/người mặc định
 
@@ -569,8 +569,7 @@ let quyFilter={mode:'all',from:'',to:''};
 let activeMonthQ=null;
 
 // ─── FIREBASE ───
-const FB_URL='https://clb-gm-authentic-default-rtdb.asia-southeast1.firebasedatabase.app';
-// NOTE: Anh cần thay FB_URL trên bằng Firebase project riêng của T5 TQK nếu muốn tách data
+const FB_URL='https://t5tqk-dc859-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 async function fbGet(path){
   try{const r=await fetch(FB_URL+path+'.json');if(!r.ok)return null;return await r.json();}
