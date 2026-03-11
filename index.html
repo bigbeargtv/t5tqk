@@ -653,7 +653,7 @@ let saveTimer=null,pendingSave=false;
 function debounceSave(){
   clearTimeout(saveTimer);pendingSave=true;setSaveDot(false);
   document.getElementById('saveLabel').textContent='⏳ Chưa lưu...';
-  saveTimer=setTimeout(()=>save(),120);
+  saveTimer=setTimeout(()=>save(),60);
 }
 async function save(){
   isSyncing=true;setSaveDot(false);document.getElementById('saveLabel').textContent='Đang lưu...';
@@ -978,7 +978,20 @@ function editMatch(id){
 function setScore(id,field,val){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m[field]=val;
-  const canSave=m.t1p1&&m.t2p1&&(m.s1!==''&&m.s2!==''||m.winner);
+  // Nếu tỉ số rõ ràng, tự cập nhật winner
+  if(m.s1!==''&&m.s2!==''){
+    const s1=+m.s1,s2=+m.s2;
+    if(s1>s2)m.winner='A';else if(s2>s1)m.winner='B';else m.winner='';
+    const card=document.getElementById('mc-'+id);
+    if(card){
+      card.querySelectorAll('.win-btn:not(.win-clear)').forEach((b,i)=>{
+        b.classList.remove('win-a','win-b');
+        if(m.winner==='A'&&i===0)b.classList.add('win-a');
+        if(m.winner==='B'&&i===1)b.classList.add('win-b');
+      });
+    }
+  }
+  const canSave=!!(m.t1p1&&m.t2p1&&(m.s1!==''&&m.s2!==''||m.winner));
   const btn=document.querySelector(`#mc-${id} .save-btn`);
   if(btn)btn.disabled=!canSave;
   debounceSave();
@@ -986,10 +999,30 @@ function setScore(id,field,val){
 function setWinner(id,winner){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m.winner=winner;
-  // Auto-fill score nếu chưa có
-  if(winner==='A'&&m.s1===''&&m.s2===''){m.s1='15';m.s2='0';}
-  if(winner==='B'&&m.s1===''&&m.s2===''){m.s1='0';m.s2='15';}
-  renderMatches();debounceSave();
+  // Luôn cập nhật tỉ số theo đội thắng
+  if(winner==='A'){m.s1='15';m.s2='0';}
+  else if(winner==='B'){m.s1='0';m.s2='15';}
+  else{m.s1='';m.s2='';}
+  // Cập nhật DOM nhanh, không re-render toàn bộ
+  const card=document.getElementById('mc-'+id);
+  if(card){
+    const inputs=card.querySelectorAll('.sb');
+    if(inputs[0])inputs[0].value=m.s1;
+    if(inputs[1])inputs[1].value=m.s2;
+    card.querySelectorAll('.win-btn:not(.win-clear)').forEach((b,i)=>{
+      b.classList.remove('win-a','win-b');
+      if(winner==='A'&&i===0)b.classList.add('win-a');
+      if(winner==='B'&&i===1)b.classList.add('win-b');
+    });
+    let clearBtn=card.querySelector('.win-clear');
+    if(winner&&!clearBtn){
+      const btns=card.querySelector('.winner-btns');
+      if(btns){const b=document.createElement('button');b.className='win-btn win-clear';b.textContent='✕';b.onclick=()=>setWinner(id,'');btns.appendChild(b);}
+    }else if(!winner&&clearBtn){clearBtn.remove();}
+    const canSave=!!(m.t1p1&&m.t2p1&&(m.s1!==''||m.winner));
+    const btn=card.querySelector('.save-btn');if(btn)btn.disabled=!canSave;
+  }
+  debounceSave();
 }
 function setBet(id,val){
   const m=matches.find(m=>m.id===id);if(!m)return;
@@ -997,7 +1030,10 @@ function setBet(id,val){
 }
 function clearSlot(id,field){
   const m=matches.find(m=>m.id===id);if(!m)return;
-  m[field]='';renderMatches();debounceSave();
+  m[field]='';
+  const card=document.getElementById('mc-'+id);
+  if(card)card.outerHTML=rEdit(m);
+  debounceSave();
 }
 function saveMatch(id){
   if(!isAdmin)return;
@@ -1087,10 +1123,14 @@ function closePicker(e){
 function pickMember(name){
   name=name.replace(/&#39;/g,"'");
   if(!pickerCtx)return;
-  const m=matches.find(m=>m.id===pickerCtx.matchId);if(!m)return;
-  m[pickerCtx.field]=name;
+  const {matchId,field}=pickerCtx;
+  const m=matches.find(m=>m.id===matchId);if(!m)return;
+  m[field]=name;
   document.getElementById('picker-overlay').classList.remove('on');pickerCtx=null;
-  renderMatches();debounceSave();
+  // Chỉ re-render card đó thay vì toàn bộ danh sách
+  const card=document.getElementById('mc-'+matchId);
+  if(card){card.outerHTML=rEdit(m);}else{renderMatches();}
+  debounceSave();
 }
 
 // ─── BXH ───
