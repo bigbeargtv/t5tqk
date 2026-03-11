@@ -669,6 +669,15 @@ function setSaveDot(saved){
 
 // ─── NAV ───
 function goTab(id){
+  // Rời tab Trận Đấu: tự hủy trận chưa lưu + trả trận đang sửa về saved
+  if(id!=='pg-matches'){
+    const hadUnsaved=matches.some(m=>!m.saved);
+    // Hủy trận mới chưa có người chơi nào
+    matches=matches.filter(m=>m.saved||m.t1p1||m.t1p2||m.t2p1||m.t2p2);
+    // Trận đang sửa (unsaved nhưng có người) → trả về saved
+    matches.forEach(m=>{if(!m.saved&&(m.t1p1||m.t2p1))m.saved=true;});
+    if(hadUnsaved){renderMatches();debounceSave();}
+  }
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nt').forEach(n=>n.classList.remove('on'));
   document.getElementById(id).classList.add('on');
