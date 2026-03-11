@@ -19,7 +19,7 @@
   --muted:#8892b0;--text:#1a1f36;--text2:#4a5270;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;overflow-x:hidden;font-size:16px;}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;overflow-x:hidden;font-size:15px;}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse 60% 40% at 15% 10%,#dce8ff60 0%,transparent 60%),
     radial-gradient(ellipse 50% 50% at 85% 90%,#fce8d060 0%,transparent 60%);}
@@ -43,13 +43,13 @@ header{position:sticky;top:0;z-index:50;background:rgba(240,242,247,.97);backdro
 
 /* NAV */
 nav{display:flex;background:var(--s1);border-bottom:1px solid var(--bdr);
-  position:sticky;top:54px;z-index:40;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
+  position:sticky;top:54px;z-index:40;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;justify-content:center;}
 nav::-webkit-scrollbar{display:none;}
-.nt{flex:0 0 auto;min-width:60px;padding:10px 6px 8px;border:none;background:transparent;
-  font-family:'Nunito',sans-serif;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+.nt{flex:0 0 auto;min-width:68px;padding:10px 10px 8px;border:none;background:transparent;
+  font-family:'Nunito',sans-serif;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
   color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;
   display:flex;flex-direction:column;align-items:center;gap:3px;}
-.nt .ic{font-size:16px;transition:transform .2s;}
+.nt .ic{font-size:18px;transition:transform .2s;}
 .nt.on{color:var(--gold);border-bottom-color:var(--gold);}
 .nt.on .ic{transform:scale(1.15);}
 
@@ -59,7 +59,7 @@ nav::-webkit-scrollbar{display:none;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 
 /* SECTION LABEL */
-.sl{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:2.5px;font-weight:700;
+.sl{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:2.5px;font-weight:700;
   color:var(--gold);text-transform:uppercase;margin:20px 0 9px;display:flex;align-items:center;gap:8px;justify-content:center;text-align:center;}
 .sl::before{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--bdr2));}
 .sl::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--bdr2),transparent);}
@@ -111,6 +111,10 @@ nav::-webkit-scrollbar{display:none;}
 .date-inp{width:100%;background:var(--s1);border:1px solid var(--bdr2);color:var(--text);
   border-radius:10px;padding:10px 12px;font-size:13px;font-family:'Nunito',sans-serif;outline:none;margin-bottom:10px;}
 .date-inp:focus{border-color:var(--gold);}
+.match-date-inp{background:transparent;border:1.5px solid var(--bdr2);color:var(--text);
+  border-radius:8px;padding:4px 8px;font-size:12px;font-family:'Nunito',sans-serif;font-weight:700;outline:none;
+  cursor:pointer;transition:border-color .2s;}
+.match-date-inp:focus,.match-date-inp:hover{border-color:var(--gold);background:#f0b4290a;}
 .add-btn{width:100%;padding:13px;margin-bottom:12px;border:2px dashed var(--bdr2);background:transparent;
   color:var(--muted);border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;
   font-family:'Nunito',sans-serif;transition:all .18s;}
@@ -386,8 +390,8 @@ nav::-webkit-scrollbar{display:none;}
 
 /* PAGE TITLES */
 .page-title{text-align:center;padding:8px 0 4px;margin-bottom:4px;}
-.page-title h2{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:2px;color:var(--text);}
-.page-title .page-sub{font-size:11px;color:var(--muted);font-weight:600;margin-top:2px;}
+.page-title h2{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;letter-spacing:2px;color:var(--text);}
+.page-title .page-sub{font-size:12px;color:var(--muted);font-weight:600;margin-top:3px;}
 .pg-section-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;letter-spacing:2px;
   color:var(--text2);text-transform:uppercase;text-align:center;margin:18px 0 10px;
   display:flex;align-items:center;gap:8px;}
@@ -450,7 +454,6 @@ nav::-webkit-scrollbar{display:none;}
 <div class="pg" id="pg-matches">
   <div class="page-title"><h2>⚡ TRẬN ĐẤU</h2><div class="page-sub">Ghi nhận kết quả thi đấu</div></div>
   <div class="sl admin-only">Buổi thi đấu</div>
-  <input type="date" class="date-inp admin-only" id="sessionDate">
   <button class="add-btn admin-only" onclick="addMatch()">＋ Tạo trận mới</button>
   <div id="mlist"></div>
 </div>
@@ -580,6 +583,7 @@ const MONTHS=['tháng 1','tháng 2','tháng 3','tháng 4','tháng 5','tháng 6',
 const ADMIN_PW = 'tqk123';
 const ADMIN_SESSION_KEY = 't5tqk_admin';
 const DEFAULT_BET = 20000; // 20,000đ/trận/người mặc định
+const MAX_DEBT_PER_DAY = 60000; // Tối đa 60,000đ/người/ngày
 
 // ─── STATE ───
 let members=[], memberUid=1, newGender='m';
@@ -843,12 +847,17 @@ function saveEditMember(){
 // ─── MATCHES ───
 function addMatch(){
   if(!isAdmin)return;
-  const d=document.getElementById('sessionDate').value;
-  sessionDate=d||todayStr();
-  if(!document.getElementById('sessionDate').value)document.getElementById('sessionDate').value=sessionDate;
+  sessionDate=todayStr();
   matches.push({id:matchUid++,date:sessionDate,t1p1:'',t1p2:'',t2p1:'',t2p2:'',s1:'',s2:'',bet:DEFAULT_BET,saved:false});
   renderMatches();debounceSave();
   setTimeout(()=>window.scrollTo({top:0,behavior:'smooth'}),60);
+}
+function setMatchDate(id,val){
+  const m=matches.find(m=>m.id===id);if(!m)return;
+  m.date=val;
+  const el=document.querySelector('#mc-'+id+' .mc-num');
+  if(el)el.textContent='📅 '+fmtDate(val);
+  debounceSave();
 }
 
 function rEdit(m){
@@ -873,7 +882,11 @@ function rEdit(m){
   const betVal=m.bet===undefined?DEFAULT_BET:m.bet;
   return `<div class="mc" id="mc-${m.id}">
     <div class="mc-head">
-      <span class="mc-num">TRẬN MỚI · ${fmtDate(m.date)}</span>
+      <div style="flex:1;display:flex;align-items:center;gap:7px;">
+        <span style="font-size:11px;">📅</span>
+        <input type="date" class="match-date-inp" value="${m.date}"
+          onchange="setMatchDate(${m.id},this.value)">
+      </div>
       ${isAdmin?`<button class="del-btn" onclick="delUnsavedMatch(${m.id})">🗑</button>`:''}
     </div>
     <div class="tgrid">
@@ -974,8 +987,8 @@ function setWinner(id,winner){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m.winner=winner;
   // Auto-fill score nếu chưa có
-  if(winner==='A'&&m.s1===''&&m.s2===''){m.s1='21';m.s2='15';}
-  if(winner==='B'&&m.s1===''&&m.s2===''){m.s1='15';m.s2='21';}
+  if(winner==='A'&&m.s1===''&&m.s2===''){m.s1='15';m.s2='0';}
+  if(winner==='B'&&m.s1===''&&m.s2===''){m.s1='0';m.s2='15';}
   renderMatches();debounceSave();
 }
 function setBet(id,val){
@@ -1322,17 +1335,24 @@ function getQuyFiltered(){
 }
 function renderQuyDay(date,saved){
   // Tính người nộp: bên thua (s2 > s1 → t1 thua, ngược lại t2 thua)
-  const debtMap={};
+  // Giới hạn tối đa MAX_DEBT_PER_DAY/người/ngày
+  const rawMap={};
   saved.forEach(m=>{
     const bet=+m.bet||DEFAULT_BET;
-    const w1=+m.s1>+m.s2;
+    const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
     const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
     losers.forEach(name=>{
-      if(!debtMap[name])debtMap[name]={name,total:0,paid:0,entries:[]};
-      debtMap[name].total+=bet;
-      if(m['paid_'+name])debtMap[name].paid+=bet;
-      debtMap[name].entries.push({...m,_loser:name});
+      if(!rawMap[name])rawMap[name]={name,raw:0,paid:0,entries:[]};
+      rawMap[name].raw+=bet;
+      if(m['paid_'+name])rawMap[name].paid+=bet;
+      rawMap[name].entries.push({...m,_loser:name});
     });
+  });
+  const debtMap={};
+  Object.values(rawMap).forEach(p=>{
+    const capped=Math.min(p.raw, MAX_DEBT_PER_DAY);
+    const paidCapped=Math.min(p.paid, capped);
+    debtMap[p.name]={...p, total:capped, paid:paidCapped, overCap:p.raw>MAX_DEBT_PER_DAY};
   });
   const list=Object.values(debtMap).sort((a,b)=>b.total-a.total);
   const totalAll=list.reduce((s,p)=>s+p.total,0);
@@ -1367,7 +1387,7 @@ function renderQuyDay(date,saved){
         ${av}
         <div style="flex:1;">
           <div style="font-weight:800;font-size:12px;">${xe(p.name)}</div>
-          <div style="font-size:10px;color:var(--muted);">${p.paid>0?`Đã ${fmtNum(p.paid)}đ · `:''}<span style="color:#e55;font-weight:700;">Còn ${fmtNum(remaining)}đ</span></div>
+          <div style="font-size:10px;color:var(--muted);">${p.paid>0?`Đã ${fmtNum(p.paid)}đ · `:''}<span style="color:#e55;font-weight:700;">Còn ${fmtNum(remaining)}đ</span>${p.overCap?' <span style="color:var(--gold);font-size:9px;">(đã giới hạn 60k)</span>':''}</div>
         </div>
         ${isAdmin?`<button onclick="togglePaidFull('${p.name}','${date}')"
           style="padding:5px 11px;border-radius:8px;border:1.5px solid var(--green);background:transparent;color:var(--green);font-weight:800;font-size:11px;cursor:pointer;">✓ Đã nộp</button>`:''}
@@ -1405,14 +1425,33 @@ function renderQuy(){
   const el=document.getElementById('quy-content');
   if(!saved.length){el.innerHTML='<div class="empty"><span class="ei">💰</span>Chưa có trận nào gây quỹ.</div>';return;}
   if(quyFilter.mode==='day'){el.innerHTML=renderQuyDay(quyFilter.from,saved);return;}
+  // Group theo ngày rồi cap MAX_DEBT_PER_DAY/người/ngày
+  const byDay={};
+  saved.forEach(m=>{
+    const d=m.date||'?';if(!byDay[d])byDay[d]=[];byDay[d].push(m);
+  });
   const debt={};
   let totalLeaf=0;
-  saved.forEach(m=>{
-    const bet=+m.bet||DEFAULT_BET;const w1=+m.s1>+m.s2;
-    const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-    losers.forEach(name=>{
+  Object.values(byDay).forEach(dayMatches=>{
+    const dayRaw={};
+    dayMatches.forEach(m=>{
+      const bet=+m.bet||DEFAULT_BET;
+      const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
+      const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
+      losers.forEach(name=>{
+        if(!dayRaw[name])dayRaw[name]=0;
+        dayRaw[name]+=bet;
+      });
+    });
+    Object.entries(dayRaw).forEach(([name,raw])=>{
+      const capped=Math.min(raw,MAX_DEBT_PER_DAY);
       if(!debt[name])debt[name]={name,total:0,matches:0};
-      debt[name].total+=bet;debt[name].matches+=1;totalLeaf+=bet;
+      debt[name].total+=capped;
+      debt[name].matches+=dayMatches.filter(m=>{
+        const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
+        return [...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].includes(name);
+      }).length;
+      totalLeaf+=capped;
     });
   });
   members.forEach(mb=>{const init=+mb.initialBalance||0;if(!init)return;if(!debt[mb.name])debt[mb.name]={name:mb.name,total:0,matches:0};debt[mb.name].total+=init;totalLeaf+=init;});
