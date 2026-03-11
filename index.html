@@ -60,7 +60,8 @@ nav::-webkit-scrollbar{display:none;}
 
 /* SECTION LABEL */
 .sl{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:2.5px;font-weight:700;
-  color:var(--gold);text-transform:uppercase;margin:20px 0 9px;display:flex;align-items:center;gap:8px;}
+  color:var(--gold);text-transform:uppercase;margin:20px 0 9px;display:flex;align-items:center;gap:8px;justify-content:center;text-align:center;}
+.sl::before{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--bdr2));}
 .sl::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--bdr2),transparent);}
 .sl:first-child{margin-top:4px;}
 
@@ -148,6 +149,17 @@ nav::-webkit-scrollbar{display:none;}
 .sb::-webkit-inner-spin-button,.sb::-webkit-outer-spin-button{-webkit-appearance:none;}
 .sb:focus{border-color:var(--gold);background:#f0b4290a;}
 .sdash{text-align:center;color:var(--bdr2);font-size:22px;font-weight:900;}
+/* WINNER QUICK SELECT */
+.winner-row{margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr);}
+.winner-label{font-size:9px;letter-spacing:1.5px;font-weight:800;color:var(--muted);text-transform:uppercase;margin-bottom:7px;text-align:center;}
+.winner-btns{display:flex;gap:6px;justify-content:center;}
+.win-btn{flex:1;padding:9px 6px;border:2px solid var(--bdr2);background:var(--s2);color:var(--text2);
+  border-radius:11px;font-size:12px;font-weight:800;cursor:pointer;transition:all .18s;font-family:'Nunito',sans-serif;}
+.win-btn:hover{border-color:var(--gold);background:#f0b4290a;}
+.win-a{border-color:#2c6fca!important;background:#2c6fca18!important;color:var(--blue)!important;}
+.win-b{border-color:var(--red)!important;background:#d0303018!important;color:var(--red)!important;}
+.win-clear{flex:0 0 auto;padding:9px 10px;font-size:11px;border-color:var(--bdr2);color:var(--muted);}
+
 
 /* BET / QUỸ */
 .bet-area{background:var(--s1);border:1px solid var(--bdr);border-radius:13px;padding:12px;margin-bottom:11px;}
@@ -371,6 +383,15 @@ nav::-webkit-scrollbar{display:none;}
 .logo-icon-wrap:hover .logo-edit{opacity:1;}
 .logo-img{width:34px;height:34px;border-radius:10px;object-fit:cover;box-shadow:0 3px 10px #d4860a35;}
 
+
+/* PAGE TITLES */
+.page-title{text-align:center;padding:8px 0 4px;margin-bottom:4px;}
+.page-title h2{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:2px;color:var(--text);}
+.page-title .page-sub{font-size:11px;color:var(--muted);font-weight:600;margin-top:2px;}
+.pg-section-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;letter-spacing:2px;
+  color:var(--text2);text-transform:uppercase;text-align:center;margin:18px 0 10px;
+  display:flex;align-items:center;gap:8px;}
+.pg-section-title::before,.pg-section-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--bdr2),transparent);}
 /* LOADING */
 #loadingOverlay{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;align-items:center;
   justify-content:center;flex-direction:column;gap:12px;font-family:'Barlow Condensed',sans-serif;
@@ -409,6 +430,7 @@ nav::-webkit-scrollbar{display:none;}
 
 <!-- THÀNH VIÊN -->
 <div class="pg on" id="pg-members">
+  <div class="page-title"><h2>👥 THÀNH VIÊN</h2><div class="page-sub">Danh sách câu lạc bộ T5 TQK</div></div>
   <div class="sl admin-only">Thêm thành viên</div>
   <div class="add-member-row admin-only-flex">
     <input class="mi" id="newName" placeholder="Tên thành viên..." onkeydown="if(event.key==='Enter')addMember()">
@@ -426,6 +448,7 @@ nav::-webkit-scrollbar{display:none;}
 
 <!-- TRẬN ĐẤU -->
 <div class="pg" id="pg-matches">
+  <div class="page-title"><h2>⚡ TRẬN ĐẤU</h2><div class="page-sub">Ghi nhận kết quả thi đấu</div></div>
   <div class="sl admin-only">Buổi thi đấu</div>
   <input type="date" class="date-inp admin-only" id="sessionDate">
   <button class="add-btn admin-only" onclick="addMatch()">＋ Tạo trận mới</button>
@@ -434,6 +457,7 @@ nav::-webkit-scrollbar{display:none;}
 
 <!-- BXH -->
 <div class="pg" id="pg-bxh">
+  <div class="page-title"><h2>🏆 BẢNG XẾP HẠNG</h2><div class="page-sub">Thứ hạng toàn CLB</div></div>
   <div class="bxh-filter">
     <div class="bxh-filter-label">📅 Thời gian</div>
     <div class="filter-row" id="filter-quick"></div>
@@ -451,6 +475,7 @@ nav::-webkit-scrollbar{display:none;}
 
 <!-- LỊCH SỬ -->
 <div class="pg" id="pg-hist">
+  <div class="page-title"><h2>📋 LỊCH SỬ</h2><div class="page-sub">Tổng hợp các buổi thi đấu</div></div>
   <div class="hist-filter">
     <div class="bxh-filter-label">📅 Thời gian</div>
     <div class="filter-row" id="hfilter-quick"></div>
@@ -468,6 +493,7 @@ nav::-webkit-scrollbar{display:none;}
 
 <!-- QUỸ -->
 <div class="pg" id="pg-quy">
+  <div class="page-title"><h2>💰 QUỸ CLB</h2><div class="page-sub">Theo dõi gây quỹ</div></div>
   <div class="hist-filter">
     <div class="bxh-filter-label">📅 Thời gian</div>
     <div class="filter-row" id="qfilter-quick"></div>
@@ -485,11 +511,13 @@ nav::-webkit-scrollbar{display:none;}
 
 <!-- THU CHI -->
 <div class="pg" id="pg-ledger">
+  <div class="page-title"><h2>💵 THU CHI</h2><div class="page-sub">Quản lý thu chi quỹ</div></div>
   <div id="ledger-content"></div>
 </div>
 
 <!-- THÀNH TÍCH -->
 <div class="pg" id="pg-stats">
+  <div class="page-title"><h2>🏅 THÀNH TÍCH</h2><div class="page-sub">Thống kê cá nhân</div></div>
   <div id="stats-picker" style="margin-bottom:11px;"></div>
   <div id="stats-content"></div>
 </div>
@@ -599,6 +627,12 @@ function applyRemoteData(data){
   if(changed){renderMembers();renderMatches();const d=document.getElementById('sessionDate');if(d&&sessionDate)d.value=sessionDate;}
 }
 async function load(){
+  let connected=false;
+  try{const r=await fetch(FB_URL+'/.json?shallow=true');connected=r.ok;}catch(e){connected=false;}
+  if(!connected){
+    document.getElementById('saveLabel').textContent='⚠️ Mất kết nối!';
+    setSaveDot(false);startRealtimeSync();return;
+  }
   const data=await fbGet('/t5tqk');
   if(data){
     members=data.members||[];memberUid=data.memberUid||1;
@@ -607,11 +641,8 @@ async function load(){
     ledger=data.ledger||[];ledgerUid=data.ledgerUid||1;
     clubInitBalance=+data.clubInitBalance||0;
     if(data.logo)logoData=data.logo;
-    setSaveDot(true);document.getElementById('saveLabel').textContent='Đã lưu ☁️';
-  } else {
-    document.getElementById('saveLabel').textContent='⚠️ Không kết nối Firebase!';
-    setSaveDot(false);
   }
+  setSaveDot(true);document.getElementById('saveLabel').textContent='Đã lưu ☁️';
   startRealtimeSync();
 }
 let saveTimer=null,pendingSave=false;
@@ -859,6 +890,14 @@ function rEdit(m){
         <input class="sb" type="number" min="0" max="99" value="${m.s2}" placeholder="0"
           oninput="setScore(${m.id},'s2',this.value)">
       </div>
+      <div class="winner-row">
+        <div class="winner-label">⚡ Chọn nhanh đội thắng</div>
+        <div class="winner-btns">
+          <button class="win-btn ${m.winner==='A'?'win-a':''}" onclick="setWinner(${m.id},'A')">🏅 Đội A thắng</button>
+          <button class="win-btn ${m.winner==='B'?'win-b':''}" onclick="setWinner(${m.id},'B')">🏅 Đội B thắng</button>
+          ${m.winner?'<button class="win-btn win-clear" onclick="setWinner('+m.id+',\'\')">✕</button>':''}
+        </div>
+      </div>
     </div>
     <div class="bet-area">
       <div class="bet-label">💰 Gây quỹ</div>
@@ -926,10 +965,18 @@ function editMatch(id){
 function setScore(id,field,val){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m[field]=val;
-  const canSave=m.t1p1&&m.t2p1&&m.s1!==''&&m.s2!=='';
+  const canSave=m.t1p1&&m.t2p1&&(m.s1!==''&&m.s2!==''||m.winner);
   const btn=document.querySelector(`#mc-${id} .save-btn`);
   if(btn)btn.disabled=!canSave;
   debounceSave();
+}
+function setWinner(id,winner){
+  const m=matches.find(m=>m.id===id);if(!m)return;
+  m.winner=winner;
+  // Auto-fill score nếu chưa có
+  if(winner==='A'&&m.s1===''&&m.s2===''){m.s1='21';m.s2='15';}
+  if(winner==='B'&&m.s1===''&&m.s2===''){m.s1='15';m.s2='21';}
+  renderMatches();debounceSave();
 }
 function setBet(id,val){
   const m=matches.find(m=>m.id===id);if(!m)return;
@@ -942,7 +989,7 @@ function clearSlot(id,field){
 function saveMatch(id){
   if(!isAdmin)return;
   const m=matches.find(m=>m.id===id);if(!m)return;
-  if(!m.t1p1||!m.t2p1||m.s1===''||m.s2==='')return;
+  if(!m.t1p1||!m.t2p1||(m.s1===''&&m.s2===''&&!m.winner))return;
   if(m.bet===undefined||m.bet===null)m.bet=DEFAULT_BET;
   m.saved=true;renderMatches();renderHist();debounceSave();
 }
