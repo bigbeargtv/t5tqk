@@ -944,24 +944,22 @@ function rSaved(m){
       ${isAdmin?`<button class="edit-btn" onclick="editMatch(${m.id})">✏️ Sửa</button>`:''}
       ${isAdmin?`<button class="del-btn" onclick="delMatch(${m.id})">🗑</button>`:''}
     </div>
-    <div class="sv-card">
-      <div>
-        <div class="sv-team-row ${w==='A'?'winner':''}">
+    <div class="sv-card" style="display:flex;align-items:center;gap:10px;padding:10px 12px;">
+      <div style="flex:1;min-width:0;">
+        <div class="sv-team-row ${w==='A'?'winner':''}" style="border-bottom:1px solid var(--bdr);padding-bottom:5px;margin-bottom:5px;">
           <div class="sv-avatars">${t1.map(n=>av(n)).join('')}</div>
-          <div class="sv-name ${w==='A'?'':''}">
-            ${w==='A'?'🏅 ':''}${xe(t1.join(' & '))||'Đội A'}
-          </div>
+          <div class="sv-name" style="font-size:12px;">${w==='A'?'🏅 ':''}${xe(t1.join(' & '))||'Đội A'}</div>
         </div>
-        <div class="sv-team-row ${w==='B'?'winner':''}">
+        <div class="sv-team-row ${w==='B'?'winner':''}" style="padding-top:0;">
           <div class="sv-avatars">${t2.map(n=>av(n)).join('')}</div>
-          <div class="sv-name">
-            ${w==='B'?'🏅 ':''}${xe(t2.join(' & '))||'Đội B'}
-          </div>
+          <div class="sv-name" style="font-size:12px;">${w==='B'?'🏅 ':''}${xe(t2.join(' & '))||'Đội B'}</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:9px;">
-        <div class="sv-score-big">${m.s1} : ${m.s2}</div>
-        <div class="sv-meta">🍃 ${fmtNum(betV)}đ/người</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:54px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;color:${w==='A'?'var(--green)':'var(--muted)'};">${m.s1}</div>
+        <div style="font-size:8px;color:var(--muted);font-weight:700;letter-spacing:1px;">VS</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;color:${w==='B'?'var(--green)':'var(--muted)'};">${m.s2}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">🍃${fmtNum(betV)}đ</div>
       </div>
     </div>
   </div>`;
@@ -984,52 +982,52 @@ function editMatch(id){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m.saved=false;renderMatches();
 }
+// Helper: kiểm tra có thể lưu không
+function canSaveMatch(m){
+  return !!(m.t1p1&&m.t2p1&&(m.winner||(m.s1!==''&&m.s2!=='')));
+}
+// Helper: cập nhật nút win-a/win-b trong card
+function _updateWinBtns(card,winner){
+  card.querySelectorAll('.win-btn:not(.win-clear)').forEach((b,i)=>{
+    b.classList.toggle('win-a',winner==='A'&&i===0);
+    b.classList.toggle('win-b',winner==='B'&&i===1);
+  });
+  const existing=card.querySelector('.win-clear');
+  if(winner&&!existing){
+    const btns=card.querySelector('.winner-btns');
+    if(btns){const b=document.createElement('button');b.className='win-btn win-clear';b.textContent='✕';b.onclick=function(){setWinner(parseInt(card.id.replace('mc-','')),'');};btns.appendChild(b);}
+  }else if(!winner&&existing){existing.remove();}
+}
+
 function setScore(id,field,val){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m[field]=val;
-  // Nếu tỉ số rõ ràng, tự cập nhật winner
   if(m.s1!==''&&m.s2!==''){
     const s1=+m.s1,s2=+m.s2;
-    if(s1>s2)m.winner='A';else if(s2>s1)m.winner='B';else m.winner='';
-    const card=document.getElementById('mc-'+id);
-    if(card){
-      card.querySelectorAll('.win-btn:not(.win-clear)').forEach((b,i)=>{
-        b.classList.remove('win-a','win-b');
-        if(m.winner==='A'&&i===0)b.classList.add('win-a');
-        if(m.winner==='B'&&i===1)b.classList.add('win-b');
-      });
-    }
+    m.winner=s1>s2?'A':s2>s1?'B':'';
   }
-  const canSave=!!(m.t1p1&&m.t2p1&&(m.s1!==''&&m.s2!==''||m.winner));
-  const btn=document.querySelector(`#mc-${id} .save-btn`);
-  if(btn)btn.disabled=!canSave;
+  const card=document.getElementById('mc-'+id);
+  if(card){
+    if(m.s1!==''&&m.s2!=='')_updateWinBtns(card,m.winner);
+    const btn=card.querySelector('.save-btn');
+    if(btn)btn.disabled=!canSaveMatch(m);
+  }
   debounceSave();
 }
 function setWinner(id,winner){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m.winner=winner;
-  // Luôn cập nhật tỉ số theo đội thắng
   if(winner==='A'){m.s1='15';m.s2='0';}
   else if(winner==='B'){m.s1='0';m.s2='15';}
   else{m.s1='';m.s2='';}
-  // Cập nhật DOM nhanh, không re-render toàn bộ
   const card=document.getElementById('mc-'+id);
   if(card){
     const inputs=card.querySelectorAll('.sb');
     if(inputs[0])inputs[0].value=m.s1;
     if(inputs[1])inputs[1].value=m.s2;
-    card.querySelectorAll('.win-btn:not(.win-clear)').forEach((b,i)=>{
-      b.classList.remove('win-a','win-b');
-      if(winner==='A'&&i===0)b.classList.add('win-a');
-      if(winner==='B'&&i===1)b.classList.add('win-b');
-    });
-    let clearBtn=card.querySelector('.win-clear');
-    if(winner&&!clearBtn){
-      const btns=card.querySelector('.winner-btns');
-      if(btns){const b=document.createElement('button');b.className='win-btn win-clear';b.textContent='✕';b.onclick=()=>setWinner(id,'');btns.appendChild(b);}
-    }else if(!winner&&clearBtn){clearBtn.remove();}
-    const canSave=!!(m.t1p1&&m.t2p1&&(m.s1!==''||m.winner));
-    const btn=card.querySelector('.save-btn');if(btn)btn.disabled=!canSave;
+    _updateWinBtns(card,winner);
+    const btn=card.querySelector('.save-btn');
+    if(btn)btn.disabled=!canSaveMatch(m);
   }
   debounceSave();
 }
@@ -1047,14 +1045,25 @@ function clearSlot(id,field){
 function saveMatch(id){
   if(!isAdmin)return;
   const m=matches.find(m=>m.id===id);if(!m)return;
-  if(!m.t1p1||!m.t2p1||(m.s1===''&&m.s2===''&&!m.winner))return;
+  if(!canSaveMatch(m))return;
   if(!m.bet||m.bet<=0)m.bet=DEFAULT_BET;
-  // Đảm bảo winner nhất quán với tỉ số
   if(m.s1!==''&&m.s2!==''){
     const s1=+m.s1,s2=+m.s2;
-    if(s1>s2)m.winner='A';else if(s2>s1)m.winner='B';else m.winner='';
+    m.winner=s1>s2?'A':s2>s1?'B':'';
   }
-  m.saved=true;renderMatches();renderHist();debounceSave();
+  m.saved=true;
+  // Thay card ngay tại chỗ, không re-render toàn bộ danh sách
+  const card=document.getElementById('mc-'+id);
+  if(card){card.outerHTML=rSaved(m);}
+  else{renderMatches();}
+  // Cập nhật label đếm
+  const unsavedCount=matches.filter(x=>!x.saved).length;
+  const label=document.querySelector('#mlist>div:first-child');
+  if(label&&label.textContent.includes('Đang diễn ra')){
+    if(unsavedCount===0)renderMatches();
+    else label.textContent='⚡ Đang diễn ra ('+unsavedCount+')';
+  }
+  renderHist();debounceSave();
 }
 
 let _openDays=new Set();
@@ -1319,13 +1328,17 @@ function renderHist(){
           const av=n=>{const mb=mbOf(n);if(!mb)return'';return mb.photo?`<img class="av-img-small" src="${mb.photo}" style="width:20px;height:20px;border-radius:5px;">` :`<div class="bxh-av ${AVC[mb.color]}" style="width:20px;height:20px;font-size:10px;border-radius:5px;">${ini(n)}</div>`;};
           const betH=m.bet?`<span style="font-size:10px;color:var(--green);font-weight:800;">💰${fmtNum(m.bet)}đ</span>`:'';
           const delBtn=isAdmin?`<button onclick="delMatch(${m.id})" class="del-btn admin-only" style="padding:3px 6px;font-size:13px;">🗑</button>`:'';
-          return `<div class="hi" style="align-items:center;">
-            <div style="flex:1;">
-              <div class="ht ${w1?'w':'l'}">${w1?'🏅 ':''}${av(m.t1p1)}${xe(t1)}</div>
-              <div class="ht ${!w1?'w':'l'}">${!w1?'🏅 ':''}${av(m.t2p1)}${xe(t2)}</div>
-              <div class="hm">${betH}</div>
+          return `<div class="hi" style="align-items:center;padding:8px 12px;">
+            <div style="flex:1;min-width:0;">
+              <div class="ht ${w1?'w':'l'}" style="display:flex;align-items:center;gap:5px;padding-bottom:4px;border-bottom:1px solid var(--bdr);margin-bottom:4px;">${w1?'🏅 ':''}${av(m.t1p1)}${xe(t1)}</div>
+              <div class="ht ${!w1?'w':'l'}" style="display:flex;align-items:center;gap:5px;">${!w1?'🏅 ':''}${av(m.t2p1)}${xe(t2)}</div>
+              ${betH?`<div class="hm" style="margin-top:3px;">${betH}</div>`:''}
             </div>
-            <div class="hs">${m.s1} : ${m.s2}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;min-width:36px;margin:0 6px;">
+              <span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;color:${w1?'var(--green)':'var(--muted)'};">${m.s1}</span>
+              <span style="font-size:8px;color:var(--muted);font-weight:700;">VS</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;color:${!w1?'var(--green)':'var(--muted)'};">${m.s2}</span>
+            </div>
             ${delBtn}
           </div>`;
         }).join('')}
@@ -1626,7 +1639,13 @@ function renderLedger(){
       else balances[name].fromLedger-=+tx.amount;
       balances[name].txns.push(tx);
     });
-    const names=[...new Set([...members.map(m=>m.name),...Object.keys(balances)])];
+    const names=[...new Set([...members.map(m=>m.name),...Object.keys(balances)])].sort((a,b)=>{
+      const ba=balances[a]||{fromBet:0,fromLedger:0};const bb=balances[b]||{fromBet:0,fromLedger:0};
+      const ma=mbOf(a),mb2=mbOf(b);
+      const ta=(ma?(+ma.initialBalance||0):0)+ba.fromLedger-ba.fromBet;
+      const tb=(mb2?(+mb2.initialBalance||0):0)+bb.fromLedger-bb.fromBet;
+      return ta-tb; // nợ nhiều (âm nhiều) lên đầu
+    });
     h+='<div class="sl" style="margin-top:0">Số dư từng người</div>';
     names.forEach(name=>{
       const b=balances[name]||{fromBet:0,fromLedger:0,txns:[]};
