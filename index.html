@@ -338,6 +338,9 @@ nav::-webkit-scrollbar{display:none;}
 .admin-mode .admin-only{display:block;}
 .admin-mode .admin-only-flex{display:flex;}
 .admin-only-flex{display:none;}
+/* Nav tab ẩn — dùng width:0 thay display:none để không làm lệch layout */
+.nt-admin{width:0;min-width:0;padding:0;overflow:hidden;opacity:0;pointer-events:none;}
+.admin-mode .nt-admin{width:auto;min-width:68px;padding:10px 10px 8px;opacity:1;pointer-events:auto;}
 
 /* ADMIN MODAL */
 #admin-modal-overlay{display:none;position:fixed;inset:0;z-index:300;
@@ -424,7 +427,7 @@ nav::-webkit-scrollbar{display:none;}
 
 <nav>
   <button class="nt on" onclick="goTab('pg-members')" id="nt0"><span class="ic">👥</span>Thành Viên</button>
-  <button class="nt" onclick="goTab('pg-matches')" id="nt1"><span class="ic">⚡</span>Trận Đấu</button>
+  <button class="nt nt-admin" onclick="goTab('pg-matches')" id="nt1"><span class="ic">⚡</span>Trận Đấu</button>
   <button class="nt" onclick="goTab('pg-bxh')" id="nt2"><span class="ic">🏆</span>BXH</button>
   <button class="nt" onclick="goTab('pg-hist')" id="nt3"><span class="ic">📋</span>Lịch Sử</button>
   <button class="nt" onclick="goTab('pg-quy')" id="nt4"><span class="ic">💰</span>Quỹ</button>
@@ -600,6 +603,49 @@ let histFilter={mode:'all',from:'',to:''};
 let quyFilter={mode:'all',from:'',to:''};
 let activeMonthQ=null;
 
+// ─── DEBT CALCULATOR (dùng chung cho Quỹ + Thu Chi) ───
+// Trả về map: name -> {owed, paid, remaining, entries:[{m, betCapped, isPaid}]}
+// matchList: danh sách trận cần tính (đã filter theo ngày/tháng nếu cần)
+function calcDebtMap(matchList){
+  const byDay={};
+  matchList.filter(m=>m.saved&&(+m.bet||DEFAULT_BET)>0).forEach(m=>{
+    const d=m.date||'?';
+    if(!byDay[d])byDay[d]=[];
+    byDay[d].push(m);
+  });
+  const result={};
+  Object.values(byDay).forEach(dayMs=>{
+    // Gom nợ thô từng người trong ngày
+    const dayRaw={}; // name -> [{m, bet}]
+    dayMs.forEach(m=>{
+      const bet=+m.bet||DEFAULT_BET;
+      const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
+      const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
+      losers.forEach(name=>{
+        if(!dayRaw[name])dayRaw[name]=[];
+        dayRaw[name].push({m,bet});
+      });
+    });
+    // Áp cap, scale từng trận theo tỉ lệ
+    Object.entries(dayRaw).forEach(([name,entries])=>{
+      const rawTotal=entries.reduce((s,e)=>s+e.bet,0);
+      const cap=Math.min(rawTotal,MAX_DEBT_PER_DAY);
+      const ratio=rawTotal>0?cap/rawTotal:1;
+      if(!result[name])result[name]={owed:0,paid:0,remaining:0,entries:[]};
+      entries.forEach(({m,bet})=>{
+        const betCapped=Math.round(bet*ratio);
+        const isPaid=!!m['paid_'+name];
+        result[name].owed+=betCapped;
+        if(isPaid)result[name].paid+=betCapped;
+        result[name].entries.push({m,betCapped,isPaid});
+      });
+    });
+  });
+  // Tính remaining
+  Object.values(result).forEach(d=>{d.remaining=d.owed-d.paid;});
+  return result;
+}
+
 // ─── FIREBASE ───
 const FB_URL='https://t5tqk-dc859-default-rtdb.asia-southeast1.firebasedatabase.app';
 
@@ -679,6 +725,7 @@ function setSaveDot(saved){
 
 // ─── NAV ───
 function goTab(id){
+  if(id==='pg-matches'&&!isAdmin)return; // Chỉ admin mới vào tab Trận Đấu
   // Rời tab Trận Đấu: tự hủy trận chưa lưu + trả trận đang sửa về saved
   if(id!=='pg-matches'){
     const hadUnsaved=matches.some(m=>!m.saved);
@@ -1330,24 +1377,34 @@ function renderHist(){
           ${liveUrl?`<a class="hist-live-link" href="${xe(liveUrl)}" target="_blank">▶ Xem</a>`:''}
         </div>
         ${ms.map(m=>{
-          const t1=[m.t1p1,m.t1p2].filter(Boolean).join(' & ')||'Đội A';
-          const t2=[m.t2p1,m.t2p2].filter(Boolean).join(' & ')||'Đội B';
-          const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-          const av=n=>{const mb=mbOf(n);if(!mb)return'';return mb.photo?`<img class="av-img-small" src="${mb.photo}" style="width:20px;height:20px;border-radius:5px;">` :`<div class="bxh-av ${AVC[mb.color]}" style="width:20px;height:20px;font-size:10px;border-radius:5px;">${ini(n)}</div>`;};
-          const betH=m.bet?`<span style="font-size:10px;color:var(--green);font-weight:800;">💰${fmtNum(m.bet)}đ</span>`:'';
-          const delBtn=isAdmin?`<button onclick="delMatch(${m.id})" class="del-btn admin-only" style="padding:3px 6px;font-size:13px;">🗑</button>`:'';
-          return `<div class="hi" style="align-items:center;padding:8px 12px;">
-            <div style="flex:1;min-width:0;">
-              <div class="ht ${w1?'w':'l'}" style="display:flex;align-items:center;gap:5px;padding-bottom:4px;border-bottom:1px solid var(--bdr);margin-bottom:4px;">${w1?'🏅 ':''}${av(m.t1p1)}${xe(t1)}</div>
-              <div class="ht ${!w1?'w':'l'}" style="display:flex;align-items:center;gap:5px;">${!w1?'🏅 ':''}${av(m.t2p1)}${xe(t2)}</div>
-              ${betH?`<div class="hm" style="margin-top:3px;">${betH}</div>`:''}
+          const t1=[m.t1p1,m.t1p2].filter(Boolean);
+          const t2=[m.t2p1,m.t2p2].filter(Boolean);
+          const w=m.winner||(m.s1!==''&&m.s2!==''?(+m.s1>+m.s2?'A':+m.s2>+m.s1?'B':''):'');
+          const av=n=>{const mb=mbOf(n);if(!mb)return'';return mb.photo
+            ?`<img src="${mb.photo}" style="width:22px;height:22px;border-radius:6px;object-fit:cover;">`
+            :`<div class="sv-av ${AVC[mb.color]}">${ini(n)}</div>`;};
+          const betV=m.bet||DEFAULT_BET;
+          const delBtn=isAdmin?`<button onclick="delMatch(${m.id})" class="del-btn" style="padding:3px 6px;font-size:13px;align-self:center;">🗑</button>`:'';
+          return `<div class="mc" style="margin:8px;box-shadow:none;border:1px solid var(--bdr);">
+            <div class="sv-card" style="display:flex;align-items:center;gap:10px;padding:10px 12px;">
+              <div style="flex:1;min-width:0;">
+                <div class="sv-team-row ${w==='A'?'winner':''}" style="border-bottom:1px solid var(--bdr);padding-bottom:5px;margin-bottom:5px;">
+                  <div class="sv-avatars">${t1.map(n=>av(n)).join('')}</div>
+                  <div class="sv-name" style="font-size:12px;">${w==='A'?'🏅 ':''}${xe(t1.join(' & '))||'Đội A'}</div>
+                </div>
+                <div class="sv-team-row ${w==='B'?'winner':''}" style="padding-top:0;">
+                  <div class="sv-avatars">${t2.map(n=>av(n)).join('')}</div>
+                  <div class="sv-name" style="font-size:12px;">${w==='B'?'🏅 ':''}${xe(t2.join(' & '))||'Đội B'}</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:48px;">
+                <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;color:${w==='A'?'var(--green)':'var(--muted)'};">${m.s1}</div>
+                <div style="font-size:8px;color:var(--muted);font-weight:700;letter-spacing:1px;">VS</div>
+                <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;color:${w==='B'?'var(--green)':'var(--muted)'};">${m.s2}</div>
+                <div style="font-size:9px;color:var(--muted);margin-top:1px;">🍃${fmtNum(betV)}đ</div>
+              </div>
+              ${delBtn}
             </div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;min-width:36px;margin:0 6px;">
-              <span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;color:${w1?'var(--green)':'var(--muted)'};">${m.s1}</span>
-              <span style="font-size:8px;color:var(--muted);font-weight:700;">VS</span>
-              <span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;color:${!w1?'var(--green)':'var(--muted)'};">${m.s2}</span>
-            </div>
-            ${delBtn}
           </div>`;
         }).join('')}
       </div>
@@ -1411,27 +1468,12 @@ function getQuyFiltered(){
   return saved;
 }
 function renderQuyDay(date,saved){
-  // Tính người nộp: bên thua (s2 > s1 → t1 thua, ngược lại t2 thua)
-  // Giới hạn tối đa MAX_DEBT_PER_DAY/người/ngày
-  const rawMap={};
-  saved.forEach(m=>{
-    const bet=+m.bet||DEFAULT_BET;
-    const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-    const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-    losers.forEach(name=>{
-      if(!rawMap[name])rawMap[name]={name,raw:0,paid:0,entries:[]};
-      rawMap[name].raw+=bet;
-      if(m['paid_'+name])rawMap[name].paid+=bet;
-      rawMap[name].entries.push({...m,_loser:name});
-    });
-  });
-  const debtMap={};
-  Object.values(rawMap).forEach(p=>{
-    const capped=Math.min(p.raw, MAX_DEBT_PER_DAY);
-    const paidCapped=Math.min(p.paid, capped);
-    debtMap[p.name]={...p, total:capped, paid:paidCapped, overCap:p.raw>MAX_DEBT_PER_DAY};
-  });
-  const list=Object.values(debtMap).sort((a,b)=>b.total-a.total);
+  // Dùng calcDebtMap chung — nhất quán với tab all/month và Thu Chi
+  const dm=calcDebtMap(saved);
+  const list=Object.entries(dm).map(([name,d])=>({
+    name, total:d.owed, paid:d.paid, remaining:d.remaining,
+    overCap:d.entries.reduce((s,e)=>s+(+e.m.bet||DEFAULT_BET),0)>MAX_DEBT_PER_DAY
+  })).sort((a,b)=>b.total-a.total);
   const totalAll=list.reduce((s,p)=>s+p.total,0);
   const totalPaid=list.reduce((s,p)=>s+p.paid,0);
   const totalUnpaid=totalAll-totalPaid;
@@ -1514,61 +1556,26 @@ function renderQuy(){
   saved.forEach(m=>{
     const d=m.date||'?';if(!byDay[d])byDay[d]=[];byDay[d].push(m);
   });
+  // Dùng calcDebtMap chung — nhất quán với Thu Chi và renderQuyDay
+  const debtDetail=calcDebtMap(saved);
+  // Xây BXH từ debtDetail (chỉ owed từ trận)
   const debt={};
-  let totalLeaf=0;
-  Object.values(byDay).forEach(dayMatches=>{
-    const dayRaw={};
-    dayMatches.forEach(m=>{
-      const bet=+m.bet||DEFAULT_BET;
-      const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-      const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-      losers.forEach(name=>{
-        if(!dayRaw[name])dayRaw[name]=0;
-        dayRaw[name]+=bet;
-      });
-    });
-    Object.entries(dayRaw).forEach(([name,raw])=>{
-      const capped=Math.min(raw,MAX_DEBT_PER_DAY);
-      if(!debt[name])debt[name]={name,total:0,matches:0};
-      debt[name].total+=capped;
-      debt[name].matches+=dayMatches.filter(m=>{
-        const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-        return [...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].includes(name);
-      }).length;
-      totalLeaf+=capped;
-    });
+  Object.entries(debtDetail).forEach(([name,d])=>{
+    if(!debt[name])debt[name]={name,total:0,matches:0};
+    debt[name].total+=d.owed;
+    debt[name].matches+=d.entries.length;
   });
-  members.forEach(mb=>{const init=+mb.initialBalance||0;if(!init)return;if(!debt[mb.name])debt[mb.name]={name:mb.name,total:0,matches:0};debt[mb.name].total+=init;totalLeaf+=init;});
-  // Tính nợ còn lại theo từng người (có cap, tính cả paid)
-  const debtDetail={}; // name -> {owed, paid, entries:[{m, betCapped, isPaid}]}
-  Object.values(byDay).forEach(dayMatches=>{
-    const dayRaw={};
-    dayMatches.forEach(m=>{
-      const bet=+m.bet||DEFAULT_BET;
-      const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-      const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-      losers.forEach(name=>{if(!dayRaw[name])dayRaw[name]=[];dayRaw[name].push({m,bet});});
-    });
-    Object.entries(dayRaw).forEach(([name,entries])=>{
-      const rawTotal=entries.reduce((s,e)=>s+e.bet,0);
-      const cap=Math.min(rawTotal,MAX_DEBT_PER_DAY);
-      const ratio=cap/rawTotal; // tỉ lệ scale nếu bị cap
-      if(!debtDetail[name])debtDetail[name]={owed:0,paid:0,entries:[]};
-      debtDetail[name].owed+=cap;
-      entries.forEach(({m,bet})=>{
-        const betCapped=Math.round(bet*ratio);
-        const isPaid=!!m['paid_'+name];
-        if(isPaid)debtDetail[name].paid+=betCapped;
-        debtDetail[name].entries.push({m,betCapped,isPaid});
-      });
-    });
-  });
+  const totalOwed=Object.values(debtDetail).reduce((s,d)=>s+d.owed,0);
+  // Tổng thu = tổng tiền người thua phải đóng (có cap 60k/người/ngày)
+  const totalLeaf=totalOwed;
+  // initialBalance chỉ cộng vào BXH hiển thị, không ảnh hưởng tổng thu
+  members.forEach(mb=>{const init=+mb.initialBalance||0;if(!init)return;if(!debt[mb.name])debt[mb.name]={name:mb.name,total:0,matches:0};debt[mb.name].total+=init;});
 
   const sorted=Object.values(debt).sort((a,b)=>b.total-a.total);
 
-  // Những người còn nợ (owed > paid), sắp theo nợ nhiều nhất
+  // Những người còn nợ (remaining > 0), sắp theo nợ nhiều nhất
   const debtors=Object.entries(debtDetail)
-    .map(([name,d])=>({name,...d,remaining:d.owed-d.paid}))
+    .map(([name,d])=>({name,...d}))
     .filter(d=>d.remaining>0)
     .sort((a,b)=>b.remaining-a.remaining);
 
@@ -1584,42 +1591,99 @@ function renderQuy(){
     </div>
   </div>`;
 
-  // Section còn nợ
+  // Section còn nợ — 2 cấp: người → ngày → từng trận
   if(debtors.length){
     html+=`<div class="sl" style="margin-top:4px;color:#e55;">❌ Còn nợ (${debtors.length} người)</div>`;
     debtors.forEach(d=>{
       const mb=mbOf(d.name);
-      const domId='quy-debt-'+d.name.replace(/\W/g,'_');
-      const isOpen=_openDays.has(domId);
+      const personDomId='quy-debt-'+d.name.replace(/\W/g,'_');
+      const isPersonOpen=_openDays.has(personDomId);
       const av=mb&&mb.photo?`<img src="${mb.photo}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;">`
         :`<div class="${mb?AVC[mb.color]:''}" style="width:30px;height:30px;border-radius:8px;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff;background:${mb?'':'var(--muted)'};">${ini(d.name)}</div>`;
-      let matchRows='';
-      d.entries.sort((a,b)=>b.m.date.localeCompare(a.m.date)).forEach(({m,betCapped,isPaid})=>{
-        const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-        const partner=w1?[m.t2p1,m.t2p2].filter(n=>n&&n!==d.name):[m.t1p1,m.t1p2].filter(n=>n&&n!==d.name);
-        const winners=w1?[m.t1p1,m.t1p2].filter(Boolean):[m.t2p1,m.t2p2].filter(Boolean);
-        matchRows+=`<div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-top:1px solid var(--bdr);background:var(--s1);">
-          <div style="flex:1;">
-            <div style="font-size:11px;font-weight:700;">${fmtDate(m.date)}</div>
-            <div style="font-size:10px;color:var(--muted);">Thua ${xe(winners.join(' & '))} · ${m.s1}:${m.s2}${partner.length?' · cùng '+xe(partner.join(', ')):''}</div>
+
+      // Gom entries theo ngày
+      const byDay2={};
+      d.entries.forEach(e=>{
+        const dd=e.m.date||'?';
+        if(!byDay2[dd])byDay2[dd]=[];
+        byDay2[dd].push(e);
+      });
+      const dayKeys=Object.keys(byDay2).sort((a,b)=>b.localeCompare(a));
+
+      // Helper avatar nhỏ
+      const avSm=n=>{const mb2=mbOf(n);if(!mb2)return'';return mb2.photo
+        ?`<img src="${mb2.photo}" style="width:20px;height:20px;border-radius:5px;object-fit:cover;">`
+        :`<div class="sv-av ${AVC[mb2.color]}" style="width:20px;height:20px;font-size:9px;">${ini(n)}</div>`;};
+
+      let dayRows='';
+      dayKeys.forEach(dd=>{
+        const dayEntries=byDay2[dd];
+        const dayOwed=dayEntries.reduce((s,e)=>s+e.betCapped,0);
+        const dayPaid=dayEntries.filter(e=>e.isPaid).reduce((s,e)=>s+e.betCapped,0);
+        const dayRemain=dayOwed-dayPaid;
+        const dayDomId=personDomId+'-'+dd;
+        const isDayOpen=_openDays.has(dayDomId);
+
+        // Từng trận trong ngày
+        let matchCards='';
+        dayEntries.forEach(({m,betCapped,isPaid})=>{
+          const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
+          const myT=w1?[m.t2p1,m.t2p2].filter(Boolean):[m.t1p1,m.t1p2].filter(Boolean);
+          const oppT=w1?[m.t1p1,m.t1p2].filter(Boolean):[m.t2p1,m.t2p2].filter(Boolean);
+          const mySc=w1?m.s2:m.s1; const oppSc=w1?m.s1:m.s2;
+          const safeName=d.name.replace(/'/g,"\\'");
+          matchCards+=`<div style="margin:6px 8px;border:1px solid ${isPaid?'#1a9e6030':'#e5555530'};border-radius:10px;overflow:hidden;background:var(--s2);">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;">
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:4px;padding-bottom:4px;border-bottom:1px solid var(--bdr);margin-bottom:4px;">
+                  <div style="display:flex;gap:2px;">${myT.map(n=>avSm(n)).join('')}</div>
+                  <span style="font-size:11px;font-weight:700;color:var(--text2);">${xe(myT.join(' & '))}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <div style="display:flex;gap:2px;">${oppT.map(n=>avSm(n)).join('')}</div>
+                  <span style="font-size:11px;font-weight:800;color:var(--green);">🏅 ${xe(oppT.join(' & '))}</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;min-width:34px;">
+                <span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;color:var(--muted);">${mySc}</span>
+                <span style="font-size:7px;color:var(--muted);font-weight:700;letter-spacing:1px;">VS</span>
+                <span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;color:var(--green);">${oppSc}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:58px;">
+                <span style="font-size:11px;font-weight:800;color:${isPaid?'var(--green)':'#e55'};">${isPaid?'✅':'-'}${fmtNum(betCapped)}đ</span>
+                ${isAdmin?`<button onclick="toggleMatchPaid(${m.id},'${safeName}');renderQuy();"
+                  style="padding:3px 8px;border-radius:7px;border:1.5px solid ${isPaid?'var(--bdr2)':'var(--green)'};background:${isPaid?'transparent':'#1a9e6012'};color:${isPaid?'var(--muted)':'var(--green)'};font-size:10px;font-weight:800;cursor:pointer;">${isPaid?'Hủy':'✓ Nộp'}</button>`:''}
+              </div>
+            </div>
+          </div>`;
+        });
+
+        dayRows+=`<div style="border-top:1px solid var(--bdr);">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--s1);cursor:pointer;" onclick="toggleMatchDay('${dayDomId}')">
+            <span style="font-size:11px;font-weight:800;color:var(--text);">📅 ${fmtDate(dd)}</span>
+            <span style="font-size:10px;color:var(--muted);">${dayEntries.length} trận</span>
+            <div style="flex:1;"></div>
+            <span style="font-size:11px;font-weight:800;color:${dayRemain>0?'#e55':'var(--green)'};">${dayRemain>0?'-'+fmtNum(dayRemain):'✅'}đ</span>
+            ${isAdmin&&dayRemain>0?`<button onclick="event.stopPropagation();togglePaidFull('${d.name.replace(/'/g,"\'")}','${dd}')"
+              style="padding:3px 8px;border-radius:7px;border:1.5px solid var(--green);background:#1a9e6012;color:var(--green);font-size:10px;font-weight:800;cursor:pointer;margin-left:4px;">✓ Nộp</button>`:''}
+            <span id="${dayDomId}-arrow" style="font-size:10px;color:var(--muted);margin-left:2px;">${isDayOpen?'▲':'▼'}</span>
           </div>
-          <span style="font-size:11px;font-weight:800;color:${isPaid?'var(--green)':'#e55'};">${isPaid?'✅':'-'}${fmtNum(betCapped)}đ</span>
-          ${isAdmin?`<button onclick="toggleMatchPaid(${m.id},'${d.name.replace(/'/g,"\'")}');renderQuy();"
-            style="padding:4px 8px;border-radius:7px;border:1.5px solid ${isPaid?'var(--bdr2)':'var(--green)'};background:transparent;color:${isPaid?'var(--muted)':'var(--green)'};font-size:10px;font-weight:800;cursor:pointer;">${isPaid?'Hủy':'Đã nộp'}</button>`:''}
+          <div id="${dayDomId}" style="display:${isDayOpen?'block':'none'};padding-bottom:4px;">${matchCards}</div>
         </div>`;
       });
+
       html+=`<div style="border:1.5px solid #e5555535;border-radius:11px;margin-bottom:6px;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--s2);cursor:pointer;" onclick="toggleMatchDay('${domId}')">
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--s2);cursor:pointer;" onclick="toggleMatchDay('${personDomId}')">
           ${av}
           <div style="flex:1;">
             <div style="font-weight:800;font-size:12px;">${xe(d.name)}</div>
-            <div style="font-size:10px;color:#e55;font-weight:700;">Còn nợ ${fmtNum(d.remaining)}đ${d.paid>0?' · Đã nộp '+fmtNum(d.paid)+'đ':''}</div>
+            <div style="font-size:10px;color:#e55;font-weight:700;">Còn nợ ${fmtNum(d.remaining)}đ${d.paid>0?' · Đã nộp '+fmtNum(d.paid)+'đ':''} · ${dayKeys.length} ngày</div>
           </div>
           ${isAdmin?`<button onclick="event.stopPropagation();togglePaidFull('${d.name.replace(/'/g,"\'")}','_all_filtered_')"
-            style="padding:5px 10px;border-radius:8px;border:1.5px solid var(--green);background:transparent;color:var(--green);font-weight:800;font-size:11px;cursor:pointer;margin-right:6px;">✓ Nộp đủ</button>`:''}
-          <span id="${domId}-arrow" style="font-size:10px;color:var(--muted);">${isOpen?'▲':'▼'}</span>
+            style="padding:5px 10px;border-radius:8px;border:1.5px solid var(--green);background:transparent;color:var(--green);font-weight:800;font-size:11px;cursor:pointer;margin-right:6px;">✓ Tất cả</button>`:''}
+          <span id="${personDomId}-arrow" style="font-size:10px;color:var(--muted);">${isPersonOpen?'▲':'▼'}</span>
         </div>
-        <div id="${domId}" style="display:${isOpen?'block':'none'};">${matchRows}</div>
+        <div id="${personDomId}" style="display:${isPersonOpen?'block':'none'};">${dayRows}</div>
       </div>`;
     });
   } else {
@@ -1649,13 +1713,9 @@ function renderLedger(){
   const el=document.getElementById('ledger-content');if(!el)return;
   const totalIn=ledger.filter(t=>t.type==='in').reduce((s,t)=>s+(+t.amount),0);
   const totalOut=ledger.filter(t=>t.type==='out').reduce((s,t)=>s+(+t.amount),0);
-  const betPaid=matches.filter(m=>m.saved&&(+m.bet||DEFAULT_BET)>0).reduce((s,m)=>{
-    const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-    const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-    let add=0;
-    losers.forEach(name=>{if(m['paid_'+name])add+=+m.bet||DEFAULT_BET;});
-    return s+add;
-  },0);
+  // betPaid dùng calcDebtMap — có cap 60k/người/ngày, nhất quán với tab Quỹ
+  const _dm=calcDebtMap(matches);
+  const betPaid=Object.values(_dm).reduce((s,d)=>s+d.paid,0);
   const netBalance=clubInitBalance+totalIn+betPaid-totalOut;
   let h=`<div class="ldg-card">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;text-align:center;margin-bottom:10px;">
@@ -1707,29 +1767,12 @@ function renderLedger(){
   // Per-person balance
   if(members.length||ledger.length){
     const balances={};
-    // Tính nợ quỹ có cap MAX_DEBT_PER_DAY/người/ngày (giống renderQuyDay)
-    const byDateRaw={};
-    matches.filter(m=>m.saved&&(+m.bet||DEFAULT_BET)>0).forEach(m=>{
-      const d=m.date||'unknown';
-      if(!byDateRaw[d])byDateRaw[d]={};
-      const bet=+m.bet||DEFAULT_BET;
-      const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-      const losers=[...(w1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2])].filter(Boolean);
-      losers.forEach(name=>{
-        if(!byDateRaw[d][name])byDateRaw[d][name]={raw:0,paid:0};
-        byDateRaw[d][name].raw+=bet;
-        if(m['paid_'+name])byDateRaw[d][name].paid+=bet;
-      });
-    });
-    // Áp cap rồi cộng vào balances
-    Object.values(byDateRaw).forEach(dayMap=>{
-      Object.entries(dayMap).forEach(([name,p])=>{
-        const capped=Math.min(p.raw,MAX_DEBT_PER_DAY);
-        const paidCapped=Math.min(p.paid,capped);
-        if(!balances[name])balances[name]={fromBet:0,fromLedger:0,txns:[]};
-        balances[name].fromBet+=capped;
-        balances[name].fromLedger+=paidCapped;
-      });
+    // Dùng calcDebtMap chung — đảm bảo nhất quán với tab Quỹ
+    const sharedDebt=calcDebtMap(matches);
+    Object.entries(sharedDebt).forEach(([name,d])=>{
+      if(!balances[name])balances[name]={fromBet:0,fromLedger:0,txns:[]};
+      balances[name].fromBet+=d.owed;
+      balances[name].fromLedger+=d.paid;
     });
     ledger.forEach(tx=>{
       const name=tx.name;if(!name)return;
@@ -1759,22 +1802,20 @@ function renderLedger(){
       const av=mb&&mb.photo?`<img src="${mb.photo}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;">`
         :`<div class="${mb?AVC[mb.color]:''}" style="width:30px;height:30px;border-radius:8px;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff;background:${mb?'':'var(--muted)'};">${ini(name)}</div>`;
       let txHtml='';
-      // Trận thua
-      const betMs=matches.filter(m=>m.saved&&(+m.bet||DEFAULT_BET)>0&&[m.t1p1,m.t1p2,m.t2p1,m.t2p2].includes(name));
-      betMs.sort((a,b)=>b.date.localeCompare(a.date)).forEach(m=>{
+      // Trận thua — dùng betCapped từ calcDebtMap để số khớp với tổng nợ
+      const personDebt=sharedDebt[name]||{entries:[]};
+      personDebt.entries.slice().sort((a,b)=>b.m.date.localeCompare(a.m.date)).forEach(({m,betCapped,isPaid})=>{
         const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
-        const isLoser=w1?[m.t2p1,m.t2p2].includes(name):[m.t1p1,m.t1p2].includes(name);
-        if(!isLoser)return;
-        const isPaid=m['paid_'+name];const betV=+m.bet||DEFAULT_BET;
         const winners=w1?[m.t1p1,m.t1p2].filter(Boolean):[m.t2p1,m.t2p2].filter(Boolean);
         const myPartner=w1?[m.t2p1,m.t2p2].filter(n=>n&&n!==name):[m.t1p1,m.t1p2].filter(n=>n&&n!==name);
         txHtml+=`<div style="display:flex;align-items:center;gap:7px;padding:8px 11px;border-top:1px solid var(--bdr);background:var(--s1);">
           <div style="flex:1;">
             <div style="font-size:11px;font-weight:800;">${fmtDate(m.date)} · ${m.s1}:${m.s2}</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:1px;">Thua ${xe(winners.join(' & '))}${myPartner.length?' · cùng '+xe(myPartner.join(', ')):''}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px;">Thua ${xe(winners.join(' & '))}${myPartner.length?' · cùng '+xe(myPartner.join(', ')):''}
+            </div>
           </div>
-          <span style="font-size:11px;font-weight:800;color:#e55;">-${fmtNum(betV)}đ</span>
-          ${isAdmin?`<button onclick="toggleMatchPaid(${m.id},'${name.replace(/'/g,"\'")}')"
+          <span style="font-size:11px;font-weight:800;color:${isPaid?'var(--green)':'#e55'}">${isPaid?'✅ ':'-'}${fmtNum(betCapped)}đ</span>
+          ${isAdmin?`<button onclick="toggleMatchPaid(${m.id},'${name.replace(/'/g,"\\'")}');renderLedger();"
             style="padding:4px 8px;border-radius:7px;border:1.5px solid ${isPaid?'var(--bdr2)':'var(--green)'};background:${isPaid?'transparent':'#1a9e6015'};color:${isPaid?'var(--muted)':'var(--green)'};font-size:10px;font-weight:800;cursor:pointer;">${isPaid?'Hủy':'✓ Nộp'}</button>`:''}
         </div>`;
       });
