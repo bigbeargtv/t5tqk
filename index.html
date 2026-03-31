@@ -658,26 +658,54 @@ async function fbSet(path,data){
   catch(e){return false;}
 }
 
-let streamSource=null;
+let streamSource=null,_streamRetries=0;
 function startRealtimeSync(){
   if(streamSource)streamSource.close();
   streamSource=new EventSource(FB_URL+'/t5tqk.json');
   streamSource.addEventListener('put',function(e){
-    try{const ev=JSON.parse(e.data);if(ev&&ev.data)applyRemoteData(ev.data);}catch(err){}
+    try{
+      const ev=JSON.parse(e.data);
+      if(ev&&ev.data){_streamRetries=0;applyRemoteData(ev.data);}
+    }catch(err){}
   });
-  streamSource.onerror=function(){setTimeout(startRealtimeSync,5000);};
+  streamSource.onerror=function(){
+    streamSource.close();
+    // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+    _streamRetries++;
+    const delay=Math.min(2000*Math.pow(2,_streamRetries-1),30000);
+    setTimeout(startRealtimeSync,delay);
+  };
 }
-let isSyncing=false;
+let isSyncing=false, _pendingRemoteData=null;
 function applyRemoteData(data){
-  if(isSyncing)return;
+  // Nếu đang save, queue lại để xử lý sau khi save xong
+  if(isSyncing){_pendingRemoteData=data;return;}
   let changed=false,ledgerChanged=false;
-  if(data.members!==undefined&&JSON.stringify(data.members)!==JSON.stringify(members)){members=data.members||[];memberUid=data.memberUid||1;changed=true;}
-  if(data.matches!==undefined&&JSON.stringify(data.matches)!==JSON.stringify(matches)){matches=data.matches||[];matchUid=data.matchUid||1;changed=true;}
+  // So sánh nhanh bằng hash thay vì JSON.stringify toàn bộ
+  const _h=o=>typeof o==='object'?JSON.stringify(o).length:String(o);
+  if(data.members!==undefined&&_h(data.members)!==_h(members)){
+    // Merge thay vì overwrite: giữ lại trận local chưa lưu
+    members=data.members||[];memberUid=Math.max(data.memberUid||1,memberUid);changed=true;
+  }
+  if(data.matches!==undefined){
+    const remoteMatches=data.matches||[];
+    const remoteIds=new Set(remoteMatches.map(m=>m.id));
+    // Giữ lại trận local chưa saved mà remote chưa có
+    const localUnsaved=matches.filter(m=>!m.saved&&!remoteIds.has(m.id));
+    // Merge: remote + local unsaved
+    const merged=[...remoteMatches,...localUnsaved];
+    if(JSON.stringify(merged)!==JSON.stringify(matches)){
+      matches=merged;
+      matchUid=Math.max(data.matchUid||1,matchUid);
+      changed=true;
+    }
+  }
   if(data.sessionDate!==undefined&&data.sessionDate!==sessionDate){sessionDate=data.sessionDate||'';changed=true;}
-  if(data.ledger!==undefined&&JSON.stringify(data.ledger)!==JSON.stringify(ledger)){ledger=data.ledger||[];ledgerUid=data.ledgerUid||1;ledgerChanged=true;}
+  if(data.ledger!==undefined&&_h(data.ledger)!==_h(ledger)){
+    ledger=data.ledger||[];ledgerUid=Math.max(data.ledgerUid||1,ledgerUid);ledgerChanged=true;
+  }
   if(data.clubInitBalance!==undefined&&data.clubInitBalance!==clubInitBalance){clubInitBalance=+data.clubInitBalance||0;ledgerChanged=true;}
   if(changed){renderMembers();renderMatches();}
-  // Nếu tab ledger đang mở thì re-render
   if((changed||ledgerChanged)&&document.getElementById('pg-ledger').classList.contains('on'))renderLedger();
 }
 async function load(){
@@ -699,24 +727,53 @@ async function load(){
   setSaveDot(true);document.getElementById('saveLabel').textContent='Đã lưu ☁️';
   startRealtimeSync();
 }
-let saveTimer=null,pendingSave=false;
+let saveTimer=null,pendingSave=false,_saveRetries=0;
+const DEBOUNCE_MS=800; // gom nhiều thay đổi trước khi save
 function debounceSave(){
   clearTimeout(saveTimer);pendingSave=true;setSaveDot(false);
   document.getElementById('saveLabel').textContent='⏳ Chưa lưu...';
-  saveTimer=setTimeout(()=>save(),60);
+  saveTimer=setTimeout(()=>save(),DEBOUNCE_MS);
 }
-let _logoSaved=false;
+let _logoDirty=false, _logoSaved=false;
+async function saveLogo(){
+  if(!logoData||!_logoDirty)return;
+  const ok=await fbSet('/t5tqk/logo',logoData);
+  if(ok){_logoDirty=false;_logoSaved=true;}
+}
 async function save(){
+  // Queue: nếu đang save, đợi xong rồi save lại
+  if(isSyncing){clearTimeout(saveTimer);saveTimer=setTimeout(()=>save(),300);return;}
   isSyncing=true;setSaveDot(false);document.getElementById('saveLabel').textContent='Đang lưu...';
-  // Tách logo: chỉ gửi kèm khi logo mới thay đổi, giảm payload bình thường
   const payload={members,memberUid,matches,matchUid,sessionDate,ledger,ledgerUid,clubInitBalance};
-  if(!_logoSaved&&logoData){payload.logo=logoData;}
-  else if(logoData){payload.logo=logoData;} // luôn gửi để sync
+  // Logo chỉ gửi khi thay đổi, dùng path riêng để giảm payload
+  if(_logoDirty&&logoData){await saveLogo();}
+  else if(!_logoSaved&&logoData){payload.logo=logoData;}
   const ok=await fbSet('/t5tqk',payload);
-  if(ok)_logoSaved=true;
-  pendingSave=false;setSaveDot(ok);
-  document.getElementById('saveLabel').textContent=ok?'Đã lưu ☁️':'Lỗi lưu!';
-  setTimeout(()=>{isSyncing=false;},500);
+  if(ok){
+    _logoSaved=true;pendingSave=false;_saveRetries=0;
+    setSaveDot(true);document.getElementById('saveLabel').textContent='Đã lưu ☁️';
+  } else {
+    // Retry tối đa 3 lần
+    _saveRetries++;
+    if(_saveRetries<=3){
+      setSaveDot(false);document.getElementById('saveLabel').textContent='⚠️ Đang thử lại ('+_saveRetries+'/3)...';
+      setTimeout(()=>{isSyncing=false;save();},1000*_saveRetries);
+      return;
+    } else {
+      pendingSave=true;_saveRetries=0;
+      setSaveDot(false);document.getElementById('saveLabel').textContent='❌ Lỗi lưu! Nhấn để thử lại';
+      document.getElementById('saveDot').onclick=()=>{document.getElementById('saveDot').onclick=null;save();};
+    }
+  }
+  // Trì hoãn tắt isSyncing để tránh remote sync đè local
+  setTimeout(()=>{
+    isSyncing=false;
+    // Xử lý queued remote data nếu có
+    if(_pendingRemoteData){
+      const data=_pendingRemoteData;_pendingRemoteData=null;
+      applyRemoteData(data);
+    }
+  },300);
 }
 function setSaveDot(saved){
   const d=document.getElementById('saveDot');d.classList.remove('saved','pending');
@@ -805,7 +862,7 @@ function handleLogoUpload(input){
   const file=input.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=ev=>{
-    logoData=ev.target.result;
+    logoData=ev.target.result;_logoDirty=true;
     const el=document.getElementById('logoIcon');
     el.outerHTML=`<img class="logo-img" id="logoIcon" src="${logoData}">`;
     debounceSave();
@@ -906,7 +963,14 @@ function saveEditMember(){
   if(members.find(m=>m.id!==editMemberId&&m.name.toLowerCase()===name.toLowerCase())){alert('Tên này đã có rồi!');return;}
   const m=members.find(m=>m.id===editMemberId);if(!m)return;
   const oldName=m.name;m.name=name;m.gender=editGender;m.nickname=document.getElementById('em-nickname').value.trim();
-  matches.forEach(match=>['t1p1','t1p2','t2p1','t2p2'].forEach(f=>{if(match[f]===oldName)match[f]=name;}));
+  // Đồng bộ tên trong matches (bao gồm cả paid_ keys)
+  matches.forEach(match=>{
+    ['t1p1','t1p2','t2p1','t2p2'].forEach(f=>{if(match[f]===oldName)match[f]=name;});
+    // Rename paid_ keys
+    if(match['paid_'+oldName]!==undefined){match['paid_'+name]=match['paid_'+oldName];delete match['paid_'+oldName];}
+  });
+  // Đồng bộ tên trong ledger
+  ledger.forEach(tx=>{if(tx.name===oldName)tx.name=name;});
   closeEditMember();renderMembers();renderMatches();debounceSave();
 }
 
@@ -1028,11 +1092,15 @@ function delUnsavedMatch(id){
 }
 function delMatch(id){
   if(!isAdmin)return;if(!confirm('Xóa trận này?'))return;
-  matches=matches.filter(m=>m.id!==id);renderMatches();renderHist();debounceSave();
+  matches=matches.filter(m=>m.id!==id);renderMatches();
+  if(document.getElementById('pg-hist').classList.contains('on'))renderHist();
+  debounceSave();
 }
 function delDay(d){
   if(!isAdmin)return;if(!confirm('Xóa tất cả trận ngày '+fmtDate(d)+'?'))return;
-  matches=matches.filter(m=>!(m.saved&&m.date===d));renderMatches();renderHist();debounceSave();
+  matches=matches.filter(m=>!(m.saved&&m.date===d));renderMatches();
+  if(document.getElementById('pg-hist').classList.contains('on'))renderHist();
+  debounceSave();
 }
 function editMatch(id){
   if(!isAdmin)return;
@@ -1074,9 +1142,13 @@ function setScore(id,field,val){
 function setWinner(id,winner){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m.winner=winner;
-  if(winner==='A'){m.s1='15';m.s2='0';}
-  else if(winner==='B'){m.s1='0';m.s2='15';}
-  else{m.s1='';m.s2='';}
+  // Chỉ set điểm mặc định nếu user CHƯA nhập điểm
+  const hasScore=m.s1!==''&&m.s2!=='';
+  if(!hasScore){
+    if(winner==='A'){m.s1='15';m.s2='0';}
+    else if(winner==='B'){m.s1='0';m.s2='15';}
+    else{m.s1='';m.s2='';}
+  } else if(!winner){m.s1='';m.s2='';}
   const card=document.getElementById('mc-'+id);
   if(card){
     const inputs=card.querySelectorAll('.sb');
@@ -1120,7 +1192,9 @@ function saveMatch(id){
     if(unsavedCount===0)renderMatches();
     else label.textContent='⚡ Đang diễn ra ('+unsavedCount+')';
   }
-  renderHist();debounceSave();
+  // Lazy render hist: chỉ render khi tab hist đang mở, không render ngay
+  if(document.getElementById('pg-hist').classList.contains('on'))renderHist();
+  debounceSave();
 }
 
 let _openDays=new Set();
@@ -1186,8 +1260,7 @@ function openPicker(matchId,field){
       const isUsed=!isSel&&used.includes(mb.name);
       const avH=mb.photo?`<img style="width:34px;height:34px;border-radius:10px;object-fit:cover;" src="${mb.photo}">`
         :`<div class="pk-av ${AVC[mb.color]}">${ini(mb.name)}</div>`;
-      const safeName=mb.name.replace(/'/g,'&#39;');
-      return `<div class="pk-item${isSel?' selected':''}${isUsed?' disabled':''}" onclick="pickMember('${safeName}')">
+      return `<div class="pk-item${isSel?' selected':''}${isUsed?' disabled':''}" data-name="${xe(mb.name)}" onclick="pickMember(this.dataset.name)">
         ${avH}
         <div class="pk-name">${xe(mb.name)}${mb.nickname?` <span style="font-size:10px;color:var(--gold);">"${xe(mb.nickname)}"</span>`:''}</div>
         ${isSel?'<span class="pk-check">✓</span>':''}
@@ -1201,7 +1274,6 @@ function closePicker(e){
   document.getElementById('picker-overlay').classList.remove('on');pickerCtx=null;
 }
 function pickMember(name){
-  name=name.replace(/&#39;/g,"'");
   if(!pickerCtx)return;
   const {matchId,field}=pickerCtx;
   const m=matches.find(m=>m.id===matchId);if(!m)return;
@@ -1886,7 +1958,7 @@ function addLedgerTx(type){
   if(!name){alert('Chọn tên!');return;}if(!amount){alert('Nhập số tiền!');return;}
   ledger.push({id:ledgerUid++,date:vnDateStr(new Date()),name,amount,note,type});
   document.getElementById('ldg-amount').value='';document.getElementById('ldg-note').value='';
-  save();renderLedger();
+  debounceSave();renderLedger();
 }
 function quickLedger(name,domId,type){
   if(!isAdmin)return;
@@ -1895,19 +1967,19 @@ function quickLedger(name,domId,type){
   if(!amount){amtEl&&amtEl.focus();return;}
   ledger.push({id:ledgerUid++,date:vnDateStr(new Date()),name,amount,note,type});
   if(amtEl)amtEl.value='';if(noteEl)noteEl.value='';
-  _openDays.add(domId);save();renderLedger();
+  _openDays.add(domId);debounceSave();renderLedger();
 }
-function delLedgerTx(id){if(!isAdmin)return;if(!confirm('Xóa giao dịch này?'))return;ledger=ledger.filter(t=>t.id!==id);save();renderLedger();}
+function delLedgerTx(id){if(!isAdmin)return;if(!confirm('Xóa giao dịch này?'))return;ledger=ledger.filter(t=>t.id!==id);debounceSave();renderLedger();}
 function saveClubInitBalance(){
   if(!isAdmin)return;
   clubInitBalance=parseInt(document.getElementById('club-init-bal').value)||0;
-  save();renderLedger();
+  debounceSave();renderLedger();
 }
 function saveInitBalance(name,domId){
   if(!isAdmin)return;
   const inp=document.getElementById('ldg-init-'+domId);const val=parseInt(inp?inp.value:0)||0;
   const mb=members.find(m=>m.name===name);if(!mb)return;mb.initialBalance=val;
-  _openDays.delete(domId);save();renderLedger();
+  _openDays.delete(domId);debounceSave();renderLedger();
 }
 function toggleMatchPaid(matchId,name){
   if(!isAdmin)return;const m=matches.find(m=>m.id===matchId);if(!m)return;
