@@ -1082,38 +1082,43 @@ function rEdit(m){
   </div>`;
 }
 
-function rSaved(m){
+// Helper: match row compact — giống GM Authentic
+function _matchRow(m, opts){
+  opts=opts||{};
   const t1=[m.t1p1,m.t1p2].filter(Boolean);
   const t2=[m.t2p1,m.t2p2].filter(Boolean);
-  const s1=+m.s1,s2=+m.s2;
-  const w=m.winner||(m.s1!==''&&m.s2!==''?(s1>s2?'A':s2>s1?'B':''):'');
-  const av=n=>{const mb=mbOf(n);if(!mb)return'';return mb.photo?`<img style="width:22px;height:22px;border-radius:6px;" src="${mb.photo}">`:`<div class="sv-av ${AVC[mb.color]}">${ini(n)}</div>`;};
-  const betV=m.bet||DEFAULT_BET;
-  return `<div class="mc" id="mc-${m.id}">
-    <div class="mc-head">
-      <span class="mc-num">✅ ${fmtDate(m.date)}</span>
-      ${isAdmin?`<button class="edit-btn" onclick="editMatch(${m.id})">✏️ Sửa</button>`:''}
-      ${isAdmin?`<button class="del-btn" onclick="delMatch(${m.id})">🗑</button>`:''}
-    </div>
-    <div class="sv-card" style="display:flex;align-items:center;gap:10px;padding:10px 12px;">
-      <div style="flex:1;min-width:0;">
-        <div class="sv-team-row ${w==='A'?'winner':''}" style="border-bottom:1px solid var(--bdr);padding-bottom:5px;margin-bottom:5px;">
-          <div class="sv-avatars">${t1.map(n=>av(n)).join('')}</div>
-          <div class="sv-name" style="font-size:12px;">${w==='A'?'🏅 ':''}${xe(t1.join(' & '))||'Đội A'}</div>
-        </div>
-        <div class="sv-team-row ${w==='B'?'winner':''}" style="padding-top:0;">
-          <div class="sv-avatars">${t2.map(n=>av(n)).join('')}</div>
-          <div class="sv-name" style="font-size:12px;">${w==='B'?'🏅 ':''}${xe(t2.join(' & '))||'Đội B'}</div>
-        </div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:54px;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;color:${w==='A'?'var(--green)':'var(--muted)'};">${m.s1}</div>
-        <div style="font-size:8px;color:var(--muted);font-weight:700;letter-spacing:1px;">VS</div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;color:${w==='B'?'var(--green)':'var(--muted)'};">${m.s2}</div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px;">🍃${fmtNum(betV)}đ</div>
-      </div>
-    </div>
+  const w1=m.winner?m.winner==='A':(+m.s1>+m.s2);
+  const av=n=>{const mb=mbOf(n);if(!mb)return'';return mb.photo
+    ?`<img loading="lazy" src="${mb.photo}" style="width:20px;height:20px;border-radius:6px;object-fit:cover;">`
+    :`<div class="${mb?AVC[mb.color]:''}" style="width:20px;height:20px;border-radius:6px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff;">${ini(n)}</div>`;};
+  const teamHtml=(names,won)=>`<div style="display:flex;align-items:center;gap:4px;${won?'':'opacity:.6'}">
+    ${names.map(n=>av(n)).join('')}
+    <span style="font-size:12px;font-weight:${won?'800':'600'};color:${won?'var(--text)':'var(--muted)'};">${xe(names.join(' & '))||'Đội'}</span>
+    ${won?'<span style="font-size:11px;">🏅</span>':''}
   </div>`;
+  const betV=m.bet||DEFAULT_BET;
+  const betHtml=betV>0?`<span style="font-size:9px;font-weight:800;color:var(--green);background:#1a9e6015;border-radius:6px;padding:1px 5px;">${fmtNum(betV)}đ🍃</span>`:'';
+  const editBtn=opts.showEdit&&isAdmin?`<button class="edit-btn" style="padding:4px 8px;font-size:11px;" onclick="editMatch(${m.id})">✏️</button>`:'';
+  const delBtn=opts.showDel&&isAdmin?`<button class="del-btn" style="padding:4px 8px;font-size:11px;" onclick="delMatch(${m.id})" title="Xóa">🗑</button>`:'';
+  return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bdr);background:var(--s1);" id="mc-${m.id}">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;">
+      ${betHtml}
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+      ${teamHtml(t1,w1)}
+      ${teamHtml(t2,!w1)}
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;line-height:1;color:${w1?'var(--green)':'var(--text)'};">${m.s1}</span>
+      <span style="font-size:9px;color:var(--muted);line-height:1;">:</span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;line-height:1;color:${!w1?'var(--green)':'var(--text)'};">${m.s2}</span>
+    </div>
+    ${editBtn||delBtn?`<div style="display:flex;gap:4px;flex-shrink:0;">${editBtn}${delBtn}</div>`:''}
+  </div>`;
+}
+
+function rSaved(m){
+  return _matchRow(m,{showEdit:true,showDel:true});
 }
 
 function delUnsavedMatch(id){
@@ -1341,6 +1346,40 @@ function pickMember(name){
   debounceSave();
 }
 
+// ── ELO: K=32, bắt đầu 1000, tính theo thứ tự thời gian ──
+function calcElo(matchList){
+  const K=32, elo={}, stats={};
+  function ge(n){ return elo[n]!==undefined ? elo[n] : 1000; }
+  matchList.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(m=>{
+    const s1=+m.s1, s2=+m.s2;
+    const w=m.winner||(m.s1!==''&&m.s2!==''?(s1>s2?'A':s2>s1?'B':''):'');
+    if(!w) return;
+    const t1=[m.t1p1,m.t1p2].filter(Boolean), t2=[m.t2p1,m.t2p2].filter(Boolean);
+    if(!t1.length||!t2.length) return;
+    const eA=t1.reduce((s,n)=>s+ge(n),0)/t1.length;
+    const eB=t2.reduce((s,n)=>s+ge(n),0)/t2.length;
+    const expA=1/(1+Math.pow(10,(eB-eA)/400));
+    const sA=w==='A'?1:w==='B'?0:0.5;
+    const dA=Math.round(K*(sA-expA)), dB=Math.round(K*((1-sA)-(1-expA)));
+    t1.forEach(n=>{ elo[n]=(elo[n]||1000)+dA; });
+    t2.forEach(n=>{ elo[n]=(elo[n]||1000)+dB; });
+    [...t1.map(n=>({n,side:'A'})),...t2.map(n=>({n,side:'B'}))].forEach(({n,side})=>{
+      const won=side===w, lost=(side==='A'&&w==='B')||(side==='B'&&w==='A');
+      const myS=side==='A'?s1:s2, oppS=side==='A'?s2:s1;
+      if(!stats[n]){const mb=mbOf(n);stats[n]={name:n,mb,w:0,l:0,pf:0,pa:0,games:0};}
+      stats[n].games++;
+      if(won)stats[n].w++; else if(lost)stats[n].l++;
+      if(!isNaN(myS))stats[n].pf+=myS;
+      if(!isNaN(oppS))stats[n].pa+=oppS;
+    });
+  });
+  Object.keys(stats).forEach(n=>{
+    stats[n].elo=Math.round(elo[n]||1000);
+    stats[n].eloChange=Math.round(elo[n]||1000)-1000;
+  });
+  return Object.values(stats);
+}
+
 // ─── BXH ───
 function initBxhFilter(){
   const years=[...new Set(matches.filter(m=>m.saved&&m.date).map(m=>m.date.slice(0,4)))].sort().reverse();
@@ -1399,38 +1438,37 @@ function renderBXH(){
     el.innerHTML='<div class="empty"><span class="ei">🏆</span>Chưa có kết quả nào.</div>';return;
   }
   if(labelEl)labelEl.innerHTML='<span class="bxh-result-label">'+getBxhLabel()+' · '+saved.length+' trận</span>';
-  const stats={};
-  function addP(name,pf,pa,won){
-    if(!name||!name.trim())return;
-    const k=name.trim().toLowerCase();
-    if(!stats[k]){const mb=mbOf(name);stats[k]={name:name.trim(),mb,w:0,l:0,pf:0,pa:0};}
-    stats[k].pf+=pf;stats[k].pa+=pa;if(won)stats[k].w++;else stats[k].l++;
-  }
-  saved.forEach(m=>{
-    const s1=+m.s1,s2=+m.s2;
-    const w1=m.winner?m.winner==='A':(s1!==s2?s1>s2:null);
-    if(w1===null)return; // hòa hoặc chưa có kết quả rõ
-    [m.t1p1,m.t1p2].forEach(p=>addP(p,s1,s2,w1));
-    [m.t2p1,m.t2p2].forEach(p=>addP(p,s2,s1,!w1));
-  });
-  const all=Object.values(stats);
-  const srt=(a,b)=>{if(b.w!==a.w)return b.w-a.w;const da=a.pf-a.pa,db=b.pf-b.pa;if(db!==da)return db-da;return b.pf-a.pf;};
-  const players=all.sort(srt);
-  let h='<div class="tbl-h"><div></div><div>Tên</div><div class="nc">T</div><div class="nc">B</div><div class="nc">Hiệu số</div><div class="nc">Điểm</div></div>';
-  players.forEach((p,i)=>{
-    const diff=p.pf-p.pa,ds=(diff>0?'+':'')+diff,dc=diff>=0?'dp':'dn';
+
+  const players=calcElo(saved);
+  const list=players.filter(p=>p.games>0).sort((a,b)=>b.elo-a.elo||b.w-a.w);
+  if(!list.length){el.innerHTML='<div class="empty"><span class="ei">🎯</span>Chưa có trận nào.</div>';return;}
+
+  // ELO intro banner
+  let h=`<div style="background:linear-gradient(135deg,#1a2a1a,#1a1a2e);border:1.5px solid #f0b42925;border-radius:12px;padding:10px 14px;margin-bottom:10px;">
+    <div style="font-size:12px;font-weight:800;color:var(--gold,#f0b429);margin-bottom:4px;">⚡ Xếp hạng ELO</div>
+    <div style="font-size:11px;color:#ffffffaa;line-height:1.5;">Mỗi người bắt đầu với <strong style="color:var(--gold,#f0b429)">1000 điểm</strong>. Thắng người mạnh → cộng nhiều · Thua người yếu → trừ nhiều. Tự cân bằng, không phụ thuộc số trận.</div>
+  </div>`;
+
+  // Header
+  h+='<div class="tbl-h"><div></div><div>Tên</div><div class="nc" style="color:var(--green);">Thắng</div><div class="nc" style="color:#e55;">Thua</div><div class="nc">ELO</div><div class="nc">±</div></div>';
+
+  list.forEach((p,i)=>{
     const rc=i===0?'r1':i===1?'r2':i===2?'r3':'';
     const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
     const avc=p.mb?AVC[p.mb.color]:'';
     const bxhAv=p.mb&&p.mb.photo?`<img class="av-img-small" src="${p.mb.photo}" style="width:26px;height:26px;border-radius:7px;">`
       :`<div class="bxh-av ${avc}" ${p.mb?'':' style="background:var(--muted)"'}>${ini(p.name)}</div>`;
+    const chg=p.eloChange;
+    const chgHtml=chg===0
+      ?'<span style="color:var(--muted)">–</span>'
+      :'<span style="color:'+(chg>0?'var(--green)':'#e55')+';font-weight:800;">'+(chg>0?'+':'')+chg+'</span>';
     h+=`<div class="tbl-r ${rc}">
       <div class="rk">${medal||i+1}</div>
-      <div class="bxh-player">${bxhAv}<span class="bxh-nm">${xe(p.name)}</span></div>
-      <div class="nc wc">${p.w}</div>
-      <div class="nc lc">${p.l}</div>
-      <div class="${dc}">${ds}</div>
-      <div class="pc">${p.pf}</div>
+      <div class="bxh-player">${bxhAv}<div style="min-width:0;overflow:hidden;"><span class="bxh-nm">${xe(p.name)}</span><div style="font-size:9px;color:var(--muted);font-weight:700;">${p.games} trận</div></div></div>
+      <div class="nc wc" style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;">${p.w}</div>
+      <div class="nc lc" style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;">${p.l}</div>
+      <div class="nc" style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;color:var(--gold,#f0b429);">${p.elo}</div>
+      <div class="nc">${chgHtml}</div>
     </div>`;
   });
   el.innerHTML=h;
@@ -1493,48 +1531,19 @@ function renderHist(){
     const ms=byDate[d].slice().reverse();
     const liveUrl=(ms[0]&&ms[0].liveUrl)||'';
     html+=`<div class="hist-session">
-      <div class="hist-session-header" onclick="toggleHistDay('hday-${d}')">
-        <span>📅</span><span class="hist-date">${fmtDate(d)}</span>
+      <div class="hist-session-header" style="cursor:pointer;" onclick="toggleHistDay('hday-${d}')">
+        <span style="font-size:15px;">📅</span>
+        <span class="hist-date">${fmtDate(d)}</span>
         <span class="hist-count">${ms.length} trận</span>
         ${liveUrl?`<a class="hist-live-link" href="${xe(liveUrl)}" target="_blank" onclick="event.stopPropagation()">▶ Live</a>`:''}
       </div>
-      <div id="hday-${d}" style="display:none;">
+      <div id="hday-${d}">
         <div class="hist-live-row admin-only-flex">
-          <span>📡</span>
-          <input class="hist-live-inp" type="url" placeholder="Link livestream..." value="${xe(liveUrl)}" oninput="saveLiveUrl('${d}',this.value)">
+          <span style="font-size:14px;">📡</span>
+          <input class="hist-live-inp" type="url" placeholder="Thêm link livestream (YouTube, Facebook...)" value="${xe(liveUrl)}" oninput="saveLiveUrl('${d}',this.value)">
           ${liveUrl?`<a class="hist-live-link" href="${xe(liveUrl)}" target="_blank">▶ Xem</a>`:''}
         </div>
-        ${ms.map(m=>{
-          const t1=[m.t1p1,m.t1p2].filter(Boolean);
-          const t2=[m.t2p1,m.t2p2].filter(Boolean);
-          const w=m.winner||(m.s1!==''&&m.s2!==''?(+m.s1>+m.s2?'A':+m.s2>+m.s1?'B':''):'');
-          const av=n=>{const mb=mbOf(n);if(!mb)return'';return mb.photo
-            ?`<img src="${mb.photo}" style="width:22px;height:22px;border-radius:6px;object-fit:cover;">`
-            :`<div class="sv-av ${AVC[mb.color]}">${ini(n)}</div>`;};
-          const betV=m.bet||DEFAULT_BET;
-          const delBtn=isAdmin?`<button onclick="delMatch(${m.id})" class="del-btn" style="padding:3px 6px;font-size:13px;align-self:center;">🗑</button>`:'';
-          return `<div class="mc" style="margin:8px;box-shadow:none;border:1px solid var(--bdr);">
-            <div class="sv-card" style="display:flex;align-items:center;gap:10px;padding:10px 12px;">
-              <div style="flex:1;min-width:0;">
-                <div class="sv-team-row ${w==='A'?'winner':''}" style="border-bottom:1px solid var(--bdr);padding-bottom:5px;margin-bottom:5px;">
-                  <div class="sv-avatars">${t1.map(n=>av(n)).join('')}</div>
-                  <div class="sv-name" style="font-size:12px;">${w==='A'?'🏅 ':''}${xe(t1.join(' & '))||'Đội A'}</div>
-                </div>
-                <div class="sv-team-row ${w==='B'?'winner':''}" style="padding-top:0;">
-                  <div class="sv-avatars">${t2.map(n=>av(n)).join('')}</div>
-                  <div class="sv-name" style="font-size:12px;">${w==='B'?'🏅 ':''}${xe(t2.join(' & '))||'Đội B'}</div>
-                </div>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:48px;">
-                <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;color:${w==='A'?'var(--green)':'var(--muted)'};">${m.s1}</div>
-                <div style="font-size:8px;color:var(--muted);font-weight:700;letter-spacing:1px;">VS</div>
-                <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;color:${w==='B'?'var(--green)':'var(--muted)'};">${m.s2}</div>
-                <div style="font-size:9px;color:var(--muted);margin-top:1px;">🍃${fmtNum(betV)}đ</div>
-              </div>
-              ${delBtn}
-            </div>
-          </div>`;
-        }).join('')}
+        ${ms.map(m=>_matchRow(m,{showDel:true})).join('')}
       </div>
     </div>`;
   });
