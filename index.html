@@ -793,7 +793,7 @@ async function save(){
   if(_logoDirty&&logoData){await saveLogo();}
   // CHỈ save trận đã saved — giống GM Authentic (trận đang nhập không gửi lên Firebase)
   const payload={members,memberUid,matches:matches.filter(m=>m.saved),matchUid,sessionDate,ledger,ledgerUid,clubInitBalance,_saveToken:lastSaveToken};
-  if(!_logoSaved&&logoData){payload.logo=logoData;}
+  if(logoData){payload.logo=logoData;}
   const ok=await fbSet('/t5tqk',payload);
   if(ok){
     _logoSaved=true;pendingSave=false;
@@ -955,7 +955,7 @@ function renderMembers(){
     +(isAdmin?'<button class="av-edit" onclick="triggerPhotoUpload('+m.id+')" title="Đổi ảnh">📷</button>':'')
     +'</div>'
     +'<div style="flex:1;min-width:0;">'
-    +'<div class="mc-name">'+xe(m.name)+'</div>'
+    +'<div class="mc-name" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;" onclick="event.stopPropagation();goStats(\''+m.name.replace(/'/g,"\\'")+'\')">' +xe(m.name)+'</div>'
     +(m.nickname?'<div style="font-size:10px;color:var(--gold);font-weight:700;margin-top:1px;">"'+xe(m.nickname)+'"</div>':'')
     +'<div class="mc-gender">'+(m.gender==='m'?'👨 Nam':'👩 Nữ')+'</div>'
     +'</div>'
@@ -1093,7 +1093,7 @@ function _matchRow(m, opts){
     :`<div class="${mb?AVC[mb.color]:''}" style="width:20px;height:20px;border-radius:6px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff;">${ini(n)}</div>`;};
   const teamHtml=(names,won)=>`<div style="display:flex;align-items:center;gap:4px;${won?'':'opacity:.6'}">
     ${names.map(n=>av(n)).join('')}
-    <span style="font-size:12px;font-weight:${won?'800':'600'};color:${won?'var(--text)':'var(--muted)'};">${xe(names.join(' & '))||'Đội'}</span>
+    <span style="font-size:12px;font-weight:${won?'800':'600'};color:${won?'var(--text)':'var(--muted)'};">${names.map(n=>`<span style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;" onclick="event.stopPropagation();goStats('${n.replace(/'/g,"\\'")}')">${xe(n)}</span>`).join(' & ')||'Đội'}</span>
     ${won?'<span style="font-size:11px;">🏅</span>':''}
   </div>`;
   const betV=m.bet||DEFAULT_BET;
@@ -1462,7 +1462,7 @@ function renderBXH(){
     const chgHtml=chg===0
       ?'<span style="color:var(--muted)">–</span>'
       :'<span style="color:'+(chg>0?'var(--green)':'#e55')+';font-weight:800;">'+(chg>0?'+':'')+chg+'</span>';
-    h+=`<div class="tbl-r ${rc}">
+    h+=`<div class="tbl-r ${rc}" data-n="${xe(p.name)}" style="cursor:pointer" onclick="goStats(this.dataset.n)">
       <div class="rk">${medal||i+1}</div>
       <div class="bxh-player">${bxhAv}<div style="min-width:0;overflow:hidden;"><span class="bxh-nm">${xe(p.name)}</span><div style="font-size:9px;color:var(--muted);font-weight:700;">${p.games} trận</div></div></div>
       <div class="nc wc" style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;">${p.w}</div>
@@ -2054,6 +2054,16 @@ function toggleMatchPaid(matchId,name){
 }
 
 // ─── THÀNH TÍCH ───
+function goStats(name){
+  if(!name)return;
+  statsSelected=name;
+  goTab('pg-stats');
+  setTimeout(()=>{
+    renderStats();
+    const sc=document.getElementById('stats-content');
+    if(sc)sc.scrollIntoView({behavior:'smooth',block:'start'});
+  },120);
+}
 function renderStats(){
   const picker=document.getElementById('stats-picker');const content=document.getElementById('stats-content');
   if(!picker||!content)return;
@@ -2078,10 +2088,12 @@ function selectStats(name){
 function buildStatsHTML(name){
   const allM=matches.filter(m=>m.saved&&m.date&&[m.t1p1,m.t1p2,m.t2p1,m.t2p2].includes(name));
   if(!allM.length)return'<div class="empty"><span class="ei">📊</span>Chưa có trận nào.</div>';
+  const sorted=allM.slice().sort((a,b)=>a.date.localeCompare(b.date));
   let wins=0,losses=0,draws=0,totalPoints=0,totalPointsAgainst=0,maxWinStreak=0,curStreak=0;
-  const partners={},rivals={},partnerWins={};
+  const partners={},rivals={},partnerWins={},rivalLosses={};
   let firstDate='',lastDate='';
-  allM.forEach(m=>{
+  const allResults=[];
+  sorted.forEach(m=>{
     const inT1=[m.t1p1,m.t1p2].includes(name);
     const s1=+m.s1,s2=+m.s2;
     const myScore=inT1?s1:s2,oppScore=inT1?s2:s1;
@@ -2093,34 +2105,48 @@ function buildStatsHTML(name){
     const partner=inT1?(m.t1p1===name?m.t1p2:m.t1p1):(m.t2p1===name?m.t2p2:m.t2p1);
     if(partner){partners[partner]=(partners[partner]||0)+1;if(won)partnerWins[partner]=(partnerWins[partner]||0)+1;}
     const oppTeam=inT1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2];
-    oppTeam.filter(Boolean).forEach(r=>{rivals[r]=(rivals[r]||0)+1;});
+    oppTeam.filter(Boolean).forEach(r=>{rivals[r]=(rivals[r]||0)+1;if(lost)rivalLosses[r]=(rivalLosses[r]||0)+1;});
     if(!firstDate||m.date<firstDate)firstDate=m.date;if(!lastDate||m.date>lastDate)lastDate=m.date;
+    allResults.push(won?'W':lost?'L':'D');
   });
   const total=wins+losses+draws,winRate=total?Math.round(wins/total*100):0;
   const mb=mbOf(name);
+  // ELO data
+  const allSaved=matches.filter(m=>m.saved&&m.date);
+  const eloData=calcElo(allSaved);
+  const myElo=eloData.find(p=>p.name===name)||{elo:1000,eloChange:0};
+  const eloRank=eloData.slice().sort((a,b)=>b.elo-a.elo).findIndex(p=>p.name===name)+1;
+  const eloChg=myElo.eloChange;
+  // Current streak
+  const rev=[...allResults].reverse();
+  let curSign=rev[0]||null,curStreakNow=0;
+  for(let i=0;i<rev.length;i++){if(rev[i]===curSign)curStreakNow++;else break;}
   const bigAv=mb&&mb.photo?`<img src="${mb.photo}" style="width:60px;height:60px;border-radius:14px;object-fit:cover;">`
     :`<div class="${mb?AVC[mb.color]:''}" style="width:60px;height:60px;border-radius:14px;font-size:22px;font-weight:900;display:flex;align-items:center;justify-content:center;color:#fff;background:${mb?'':'var(--muted)'};">${ini(name)}</div>`;
-  const rankData={};
-  members.forEach(m2=>{const ms2=matches.filter(x=>x.saved&&[x.t1p1,x.t1p2,x.t2p1,x.t2p2].includes(m2.name));
-    let w2=0;ms2.forEach(x=>{const inT=([x.t1p1,x.t1p2].includes(m2.name));const ww=x.winner||(x.s1!==''&&x.s2!==''?(+x.s1>+x.s2?'A':+x.s2>+x.s1?'B':''):'');if(inT?ww==='A':ww==='B')w2++;});
-    rankData[m2.name]={w:w2,total:ms2.length,rate:ms2.length?w2/ms2.length:0};});
-  const rankList=Object.entries(rankData).sort((a,b)=>b[1].rate-a[1].rate||b[1].w-a[1].w);
-  const myRank=rankList.findIndex(r=>r[0]===name)+1;
+  const streakLabel=curSign==='W'?`🔥 ${curStreakNow} thắng liên tiếp`:curSign==='L'?`❄️ ${curStreakNow} thua liên tiếp`:'';
   const topPartners=Object.entries(partners).sort((a,b)=>b[1]-a[1]).slice(0,3);
   const topRivals=Object.entries(rivals).sort((a,b)=>b[1]-a[1]).slice(0,3);
-  let h=`<div class="stat-card" style="display:flex;align-items:center;gap:13px;">
+  function pAv(n,sz){sz=sz||30;const pm=mbOf(n);return pm&&pm.photo
+    ?`<img src="${pm.photo}" style="width:${sz}px;height:${sz}px;border-radius:${Math.round(sz/3)}px;object-fit:cover;flex-shrink:0;">`
+    :`<div class="${pm?AVC[pm.color]:''}" style="width:${sz}px;height:${sz}px;border-radius:${Math.round(sz/3)}px;font-size:${Math.round(sz/2.8)}px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff;background:${pm?'':'var(--muted)'};flex-shrink:0;">${ini(n)}</div>`;}
+  const nl=n=>`<span style="cursor:pointer;color:var(--text2);text-decoration:underline dotted;text-underline-offset:2px;" onclick="goStats('${n.replace(/'/g,"\\'")}')">${xe(n)}</span>`;
+
+  // Hero card
+  let h=`<div class="stat-card" style="display:flex;align-items:flex-start;gap:13px;">
     ${bigAv}
-    <div style="flex:1;">
-      <div style="font-size:16px;font-weight:900;">${xe(name)}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:18px;font-weight:900;line-height:1.1;">${xe(name)}</div>
       ${mb&&mb.nickname?`<div style="font-size:11px;color:var(--gold);font-weight:700;">"${xe(mb.nickname)}"</div>`:''}
       <div style="font-size:10px;color:var(--muted);margin-top:3px;">${mb?((mb.gender==='m'?'👨 Nam':'👩 Nữ')+' · '):''}Từ ${fmtDate(firstDate)}</div>
       <div style="margin-top:5px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-        <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:7px;">🏅 Hạng ${myRank}/${members.length}</span>
-        <span style="background:var(--green);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:7px;">🔥 ${maxWinStreak} thắng liên tiếp</span>
+        <span style="background:#f0b42915;border:1.5px solid #f0b42940;color:var(--gold);font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;">⚡ ELO #${eloRank} · ${myElo.elo} <span style="color:${eloChg>=0?'var(--green)':'#e55'};">${eloChg>=0?'+':''}${eloChg}</span></span>
+        ${streakLabel?`<span style="background:${curSign==='W'?'#1a9e6015':'#e5555515'};border:1.5px solid ${curSign==='W'?'#1a9e6030':'#e5555530'};color:${curSign==='W'?'var(--green)':'#e55'};font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;">${streakLabel}</span>`:''}
       </div>
     </div>
-  </div>
-  <div class="stat-card">
+  </div>`;
+
+  // Tổng quan
+  h+=`<div class="stat-card">
     <div style="font-weight:800;font-size:12px;margin-bottom:9px;">📊 Tổng quan</div>
     <div class="stat-grid">
       <div class="stat-box"><div class="stat-num" style="color:var(--gold);">${total}</div><div class="stat-lbl">Trận</div></div>
@@ -2128,34 +2154,99 @@ function buildStatsHTML(name){
       <div class="stat-box"><div class="stat-num" style="color:#e55;">${losses}</div><div class="stat-lbl">Thua</div></div>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:800;margin-bottom:3px;">
-      <span style="color:var(--green);">Tỉ lệ thắng</span><span style="color:var(--gold);">${winRate}%</span>
+      <span style="color:var(--green);">Tỉ lệ thắng</span><span style="color:${winRate>=50?'var(--green)':'#e55'};">${winRate}%</span>
     </div>
     <div class="stat-bar-wrap"><div class="stat-bar" style="width:${winRate}%;background:linear-gradient(90deg,var(--green),var(--gold));"></div></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px;">
-      <div class="stat-box"><div class="stat-num" style="font-size:16px;">${totalPoints}</div><div class="stat-lbl">Điểm ghi</div></div>
-      <div class="stat-box"><div class="stat-num" style="font-size:16px;color:#e55;">${totalPointsAgainst}</div><div class="stat-lbl">Điểm bị ghi</div></div>
+      <div class="stat-box"><div class="stat-num" style="font-size:16px;color:var(--green);">${totalPoints}</div><div class="stat-lbl">Điểm ghi</div></div>
+      <div class="stat-box"><div class="stat-num" style="font-size:16px;color:#e55;">${totalPointsAgainst}</div><div class="stat-lbl">Bị ghi</div></div>
     </div>
   </div>`;
+
+  // Streak dots - 10 trận gần nhất
+  const last10=allResults.slice(-10);
+  if(last10.length){
+    h+=`<div class="stat-card"><div style="font-weight:800;font-size:12px;margin-bottom:9px;">⚡ ${last10.length} trận gần nhất</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;">${last10.map(r=>`<div style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;background:${r==='W'?'var(--green)':r==='L'?'#e55':'var(--muted)'};">${r==='W'?'T':r==='L'?'B':'H'}</div>`).join('')}</div>
+    <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;font-weight:800;">
+      <span style="color:var(--green);">T: ${last10.filter(r=>r==='W').length}</span>
+      <span style="color:#e55;">B: ${last10.filter(r=>r==='L').length}</span>
+      <span style="color:var(--muted);margin-left:auto;">Best 🔥${maxWinStreak}</span>
+    </div></div>`;
+  }
+
+  // Đồng đội
   if(topPartners.length){
     h+=`<div class="stat-card"><div style="font-weight:800;font-size:12px;margin-bottom:9px;">🤝 Đồng đội hay gặp</div>`;
     topPartners.forEach(([pname,count])=>{
-      const pmb=mbOf(pname);const pw=partnerWins[pname]||0;const pwr=Math.round(pw/count*100);
-      const pav=pmb&&pmb.photo?`<img src="${pmb.photo}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;">`
-        :`<div class="${pmb?AVC[pmb.color]:''}" style="width:30px;height:30px;border-radius:8px;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff;background:${pmb?'':'var(--muted)'};">${ini(pname)}</div>`;
-      h+=`<div class="partner-row">${pav}<div style="flex:1;"><div style="font-weight:800;font-size:12px;">${xe(pname)}</div>
-        <div style="font-size:10px;color:var(--muted);">${count} trận · thắng ${pw} (${pwr}%)</div></div></div>`;
+      const pw=partnerWins[pname]||0;const pwr=Math.round(pw/count*100);const col=pwr>=50?'var(--green)':'#e55';
+      h+=`<div class="partner-row" style="cursor:pointer;" onclick="goStats('${pname.replace(/'/g,"\\'")}')">${pAv(pname)}<div style="flex:1;"><div style="font-weight:800;font-size:12px;">${xe(pname)}</div>
+        <div style="font-size:10px;color:var(--muted);">${count} trận · thắng ${pw} <span style="color:${col};">(${pwr}%)</span></div></div></div>`;
     });
     h+='</div>';
   }
+  // Đối thủ
   if(topRivals.length){
     h+=`<div class="stat-card"><div style="font-weight:800;font-size:12px;margin-bottom:9px;">⚔️ Đối thủ hay gặp</div>`;
     topRivals.forEach(([rname,count])=>{
-      const rmb=mbOf(rname);
-      const rav=rmb&&rmb.photo?`<img src="${rmb.photo}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;">`
-        :`<div class="${rmb?AVC[rmb.color]:''}" style="width:30px;height:30px;border-radius:8px;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff;background:${rmb?'':'var(--muted)'};">${ini(rname)}</div>`;
-      h+=`<div class="partner-row">${rav}<div style="flex:1;"><div style="font-weight:800;font-size:12px;">${xe(rname)}</div>
-        <div style="font-size:10px;color:var(--muted);">${count} lần đối mặt</div></div></div>`;
+      const rl=rivalLosses[rname]||0;const rlr=Math.round(rl/count*100);const col=rlr>=50?'#e55':'var(--green)';
+      h+=`<div class="partner-row" style="cursor:pointer;" onclick="goStats('${rname.replace(/'/g,"\\'")}')">${pAv(rname)}<div style="flex:1;"><div style="font-weight:800;font-size:12px;">${xe(rname)}</div>
+        <div style="font-size:10px;color:var(--muted);">${count} lần đối mặt · thua ${rl} <span style="color:${col};">(${rlr}%)</span></div></div></div>`;
     });
+    h+='</div>';
+  }
+
+  // Lịch sử trận đấu
+  const histSorted=allM.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(histSorted.length){
+    h+=`<div class="stat-card"><div style="font-weight:800;font-size:12px;margin-bottom:9px;">📋 Lịch sử trận đấu (${histSorted.length})</div>`;
+    const showCount=Math.min(histSorted.length,10);
+    for(let i=0;i<showCount;i++){
+      const m=histSorted[i];
+      const inT1=[m.t1p1,m.t1p2].includes(name);
+      const w=m.winner||(m.s1!==''&&m.s2!==''?(+m.s1>+m.s2?'A':+m.s2>+m.s1?'B':''):'');
+      const won=inT1?w==='A':w==='B',lost=inT1?w==='B':w==='A';
+      const partner=(inT1?[m.t1p1,m.t1p2]:[m.t2p1,m.t2p2]).filter(Boolean).filter(n=>n!==name)[0];
+      const opp=(inT1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2]).filter(Boolean);
+      const myS=inT1?m.s1:m.s2,oppS=inT1?m.s2:m.s1;
+      const resClr=won?'var(--green)':lost?'#e55':'var(--muted)';
+      const resTxt=won?'Thắng':lost?'Thua':'Hòa';
+      h+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bdr);">
+        <span style="font-size:10px;font-weight:800;color:#fff;background:${resClr};padding:2px 7px;border-radius:6px;flex-shrink:0;">${resTxt}</span>
+        <div style="flex:1;min-width:0;overflow:hidden;">
+          <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">⚔️ ${opp.map(nl).join(' & ')}</div>
+          <div style="font-size:10px;color:var(--muted);display:flex;gap:6px;align-items:center;">
+            ${partner?`🤝 ${nl(partner)} ·`:''} 📅 ${fmtDate(m.date)}
+          </div>
+        </div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;flex-shrink:0;color:${won?'var(--green)':lost?'#e55':'var(--text)'};">${myS}–${oppS}</div>
+      </div>`;
+    }
+    if(histSorted.length>10){
+      h+=`<div id="stats-hist-more" style="display:none;">`;
+      for(let i=10;i<histSorted.length;i++){
+        const m=histSorted[i];
+        const inT1=[m.t1p1,m.t1p2].includes(name);
+        const w=m.winner||(m.s1!==''&&m.s2!==''?(+m.s1>+m.s2?'A':+m.s2>+m.s1?'B':''):'');
+        const won=inT1?w==='A':w==='B',lost=inT1?w==='B':w==='A';
+        const partner=(inT1?[m.t1p1,m.t1p2]:[m.t2p1,m.t2p2]).filter(Boolean).filter(n=>n!==name)[0];
+        const opp=(inT1?[m.t2p1,m.t2p2]:[m.t1p1,m.t1p2]).filter(Boolean);
+        const myS=inT1?m.s1:m.s2,oppS=inT1?m.s2:m.s1;
+        const resClr=won?'var(--green)':lost?'#e55':'var(--muted)';
+        const resTxt=won?'Thắng':lost?'Thua':'Hòa';
+        h+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bdr);">
+          <span style="font-size:10px;font-weight:800;color:#fff;background:${resClr};padding:2px 7px;border-radius:6px;flex-shrink:0;">${resTxt}</span>
+          <div style="flex:1;min-width:0;overflow:hidden;">
+            <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">⚔️ ${opp.map(nl).join(' & ')}</div>
+            <div style="font-size:10px;color:var(--muted);display:flex;gap:6px;align-items:center;">
+              ${partner?`🤝 ${nl(partner)} ·`:''} 📅 ${fmtDate(m.date)}
+            </div>
+          </div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;flex-shrink:0;color:${won?'var(--green)':lost?'#e55':'var(--text)'};">${myS}–${oppS}</div>
+        </div>`;
+      }
+      h+=`</div><button onclick="document.getElementById('stats-hist-more').style.display='block';this.style.display='none';" style="width:100%;padding:8px;margin-top:8px;border:1.5px dashed var(--bdr);border-radius:9px;background:transparent;color:var(--muted);font-weight:800;font-size:11px;cursor:pointer;">Xem thêm ${histSorted.length-10} trận ▼</button>`;
+    }
     h+='</div>';
   }
   return h;
