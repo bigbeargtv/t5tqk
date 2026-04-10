@@ -646,75 +646,113 @@ function calcDebtMap(matchList){
   return result;
 }
 
-// ─── FIREBASE ───
+// ─── FIREBASE ─── (áp dụng cách GM Authentic)
 const FB_URL='https://t5tqk-dc859-default-rtdb.asia-southeast1.firebasedatabase.app';
 
+// Safe AbortController — tránh lỗi trong sandbox/iframe
+function makeAbort(ms){
+  try{const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),ms);return{signal:ctrl.signal,clear:()=>clearTimeout(timer)};}
+  catch(e){return{signal:undefined,clear:()=>{}};}
+}
 async function fbGet(path){
-  try{const r=await fetch(FB_URL+path+'.json');if(!r.ok)return null;return await r.json();}
-  catch(e){return null;}
+  try{
+    const{signal,clear}=makeAbort(5000);
+    const opts=signal?{signal}:{};
+    const r=await fetch(FB_URL+path+'.json',opts);
+    clear();
+    if(!r.ok){console.warn('fbGet failed:',r.status);return null;}
+    return await r.json();
+  }catch(e){
+    if(e.name!=='AbortError')console.warn('fbGet error:',e.message);
+    return null;
+  }
 }
 async function fbSet(path,data){
-  try{const r=await fetch(FB_URL+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return r.ok;}
-  catch(e){return false;}
+  try{
+    const{signal,clear}=makeAbort(30000);
+    const opts={method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)};
+    if(signal)opts.signal=signal;
+    const r=await fetch(FB_URL+path+'.json',opts);
+    clear();
+    if(!r.ok)console.warn('fbSet failed:',r.status);
+    return r.ok;
+  }catch(e){
+    if(e.name!=='AbortError')console.warn('fbSet error:',e.message);
+    return false;
+  }
 }
 
-let streamSource=null,_streamRetries=0;
+// Realtime listener using SSE (Firebase streaming) — giống GM Authentic
+let streamSource=null;
+let lastSaveToken=null;
+let ignoreSseUntil=0;
 function startRealtimeSync(){
   if(streamSource)streamSource.close();
   streamSource=new EventSource(FB_URL+'/t5tqk.json');
   streamSource.addEventListener('put',function(e){
     try{
       const ev=JSON.parse(e.data);
-      if(ev&&ev.data){_streamRetries=0;applyRemoteData(ev.data);}
+      if(!ev||!ev.data)return;
+      // Bỏ qua echo từ chính mình vừa save
+      if(Date.now()<ignoreSseUntil)return;
+      if(ev.data._saveToken&&ev.data._saveToken===lastSaveToken)return;
+      applyRemoteData(ev.data);
     }catch(err){}
   });
-  streamSource.onerror=function(){
-    streamSource.close();
-    // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
-    _streamRetries++;
-    const delay=Math.min(2000*Math.pow(2,_streamRetries-1),30000);
-    setTimeout(startRealtimeSync,delay);
-  };
+  streamSource.onerror=function(){setTimeout(startRealtimeSync,5000);};
 }
-let isSyncing=false, _pendingRemoteData=null;
+
 function applyRemoteData(data){
-  // Nếu đang save, queue lại để xử lý sau khi save xong
-  if(isSyncing){_pendingRemoteData=data;return;}
   let changed=false,ledgerChanged=false;
-  // So sánh nhanh bằng hash thay vì JSON.stringify toàn bộ
-  const _h=o=>typeof o==='object'?JSON.stringify(o).length:String(o);
-  if(data.members!==undefined&&_h(data.members)!==_h(members)){
-    // Merge thay vì overwrite: giữ lại trận local chưa lưu
-    members=data.members||[];memberUid=Math.max(data.memberUid||1,memberUid);changed=true;
+  if(data.members!==undefined){
+    const remote=JSON.stringify(data.members);
+    const local=JSON.stringify(members);
+    if(remote!==local){members=data.members||[];memberUid=data.memberUid||1;changed=true;}
   }
   if(data.matches!==undefined){
-    const remoteMatches=data.matches||[];
-    const remoteIds=new Set(remoteMatches.map(m=>m.id));
-    // Giữ lại trận local chưa saved mà remote chưa có
-    const localUnsaved=matches.filter(m=>!m.saved&&!remoteIds.has(m.id));
-    // Merge: remote + local unsaved
-    const merged=[...remoteMatches,...localUnsaved];
-    if(JSON.stringify(merged)!==JSON.stringify(matches)){
-      matches=merged;
-      matchUid=Math.max(data.matchUid||1,matchUid);
+    const remote=JSON.stringify(data.matches||[]);
+    const localSaved=JSON.stringify(matches.filter(m=>m.saved));
+    if(remote!==localSaved){
+      // Giữ lại trận local chưa saved — giống GM Authentic
+      const unsaved=matches.filter(m=>!m.saved);
+      matches=[...(data.matches||[]),...unsaved];
+      matchUid=data.matchUid||1;
       changed=true;
     }
   }
   if(data.sessionDate!==undefined&&data.sessionDate!==sessionDate){sessionDate=data.sessionDate||'';changed=true;}
-  if(data.ledger!==undefined&&_h(data.ledger)!==_h(ledger)){
-    ledger=data.ledger||[];ledgerUid=Math.max(data.ledgerUid||1,ledgerUid);ledgerChanged=true;
+  if(data.ledger!==undefined&&JSON.stringify(data.ledger)!==JSON.stringify(ledger)){
+    ledger=data.ledger||[];ledgerUid=data.ledgerUid||1;ledgerChanged=true;
   }
   if(data.clubInitBalance!==undefined&&data.clubInitBalance!==clubInitBalance){clubInitBalance=+data.clubInitBalance||0;ledgerChanged=true;}
-  if(changed){renderMembers();renderMatches();}
+  if(changed){
+    renderMembers();
+    // Chỉ render phần saved, giữ nguyên card đang nhập — giống GM Authentic
+    renderMatchesSaved();
+  }
   if((changed||ledgerChanged)&&document.getElementById('pg-ledger').classList.contains('on'))renderLedger();
 }
+
+// ── Local Cache — load nhanh, sync sau ──
+const CACHE_KEY='t5tqk_v1';
+function _saveCache(d){try{localStorage.setItem(CACHE_KEY,JSON.stringify({ts:Date.now(),d}));}catch(e){}}
+function _loadCache(){try{const r=localStorage.getItem(CACHE_KEY);if(!r)return null;const o=JSON.parse(r);if(Date.now()-o.ts>86400000)return null;return o.d;}catch(e){return null;}}
+
 async function load(){
-  let connected=false;
-  try{const r=await fetch(FB_URL+'/.json?shallow=true');connected=r.ok;}catch(e){connected=false;}
-  if(!connected){
-    document.getElementById('saveLabel').textContent='⚠️ Mất kết nối!';
-    setSaveDot(false);startRealtimeSync();return;
+  setSaveDot(false);
+  // Load cache trước cho nhanh
+  const cached=_loadCache();
+  if(cached){
+    members=cached.members||[];memberUid=cached.memberUid||1;
+    matches=cached.matches||[];matchUid=cached.matchUid||1;
+    sessionDate=cached.sessionDate||'';
+    ledger=cached.ledger||[];ledgerUid=cached.ledgerUid||1;
+    clubInitBalance=+cached.clubInitBalance||0;
+    if(cached.logo)logoData=cached.logo;
+    renderMembers();renderMatches();
+    document.getElementById('saveLabel').textContent='🔄 Đồng bộ...';
   }
+  // Rồi fetch Firebase
   const data=await fbGet('/t5tqk');
   if(data){
     members=data.members||[];memberUid=data.memberUid||1;
@@ -723,61 +761,53 @@ async function load(){
     ledger=data.ledger||[];ledgerUid=data.ledgerUid||1;
     clubInitBalance=+data.clubInitBalance||0;
     if(data.logo)logoData=data.logo;
+    _saveCache(data);
+    renderMembers();renderMatchesSaved();
+    setSaveDot(true);document.getElementById('saveLabel').textContent='Đã lưu ☁️';
+  } else {
+    setSaveDot(false);
+    document.getElementById('saveLabel').textContent=cached?'⚠️ Offline':'⚠️ Không kết nối Firebase!';
   }
-  setSaveDot(true);document.getElementById('saveLabel').textContent='Đã lưu ☁️';
   startRealtimeSync();
 }
-let saveTimer=null,pendingSave=false,_saveRetries=0;
-const DEBOUNCE_MS=800; // gom nhiều thay đổi trước khi save
+
+let saveTimer=null,pendingSave=false;
 function debounceSave(){
-  clearTimeout(saveTimer);pendingSave=true;setSaveDot(false);
-  document.getElementById('saveLabel').textContent='⏳ Chưa lưu...';
-  saveTimer=setTimeout(()=>save(),DEBOUNCE_MS);
+  clearTimeout(saveTimer);pendingSave=true;setSaveDotPending();
+  // Khi đang nhập trận (unsaved card) → delay 1500ms; bình thường 800ms — giống GM Authentic
+  const delay=matches.some(m=>!m.saved)?1500:800;
+  saveTimer=setTimeout(()=>save(),delay);
 }
-let _logoDirty=false, _logoSaved=false;
+let _logoDirty=false,_logoSaved=false;
 async function saveLogo(){
   if(!logoData||!_logoDirty)return;
   const ok=await fbSet('/t5tqk/logo',logoData);
   if(ok){_logoDirty=false;_logoSaved=true;}
 }
 async function save(){
-  // Queue: nếu đang save, đợi xong rồi save lại
-  if(isSyncing){clearTimeout(saveTimer);saveTimer=setTimeout(()=>save(),300);return;}
-  isSyncing=true;setSaveDot(false);document.getElementById('saveLabel').textContent='Đang lưu...';
-  const payload={members,memberUid,matches,matchUid,sessionDate,ledger,ledgerUid,clubInitBalance};
-  // Logo chỉ gửi khi thay đổi, dùng path riêng để giảm payload
+  // saveToken chống SSE echo — giống GM Authentic
+  lastSaveToken=Math.random().toString(36).slice(2);
+  ignoreSseUntil=Date.now()+3000;
+  setSaveDot(false);document.getElementById('saveLabel').textContent='Đang lưu...';
+  // Logo tách riêng
   if(_logoDirty&&logoData){await saveLogo();}
-  else if(!_logoSaved&&logoData){payload.logo=logoData;}
+  // CHỈ save trận đã saved — giống GM Authentic (trận đang nhập không gửi lên Firebase)
+  const payload={members,memberUid,matches:matches.filter(m=>m.saved),matchUid,sessionDate,ledger,ledgerUid,clubInitBalance,_saveToken:lastSaveToken};
+  if(!_logoSaved&&logoData){payload.logo=logoData;}
   const ok=await fbSet('/t5tqk',payload);
   if(ok){
-    _logoSaved=true;pendingSave=false;_saveRetries=0;
-    setSaveDot(true);document.getElementById('saveLabel').textContent='Đã lưu ☁️';
-  } else {
-    // Retry tối đa 3 lần
-    _saveRetries++;
-    if(_saveRetries<=3){
-      setSaveDot(false);document.getElementById('saveLabel').textContent='⚠️ Đang thử lại ('+_saveRetries+'/3)...';
-      setTimeout(()=>{isSyncing=false;save();},1000*_saveRetries);
-      return;
-    } else {
-      pendingSave=true;_saveRetries=0;
-      setSaveDot(false);document.getElementById('saveLabel').textContent='❌ Lỗi lưu! Nhấn để thử lại';
-      document.getElementById('saveDot').onclick=()=>{document.getElementById('saveDot').onclick=null;save();};
-    }
+    _logoSaved=true;pendingSave=false;
+    _saveCache({members,memberUid,matches:matches.filter(m=>m.saved),matchUid,sessionDate,ledger,ledgerUid,clubInitBalance,logo:logoData});
   }
-  // Trì hoãn tắt isSyncing để tránh remote sync đè local
-  setTimeout(()=>{
-    isSyncing=false;
-    // Xử lý queued remote data nếu có
-    if(_pendingRemoteData){
-      const data=_pendingRemoteData;_pendingRemoteData=null;
-      applyRemoteData(data);
-    }
-  },300);
+  setSaveDot(ok);
+  document.getElementById('saveLabel').textContent=ok?'Đã lưu ☁️':'Lỗi lưu!';
 }
 function setSaveDot(saved){
   const d=document.getElementById('saveDot');d.classList.remove('saved','pending');
-  if(saved)d.classList.add('saved');else if(pendingSave)d.classList.add('pending');
+  if(saved)d.classList.add('saved');
+}
+function setSaveDotPending(){
+  const d=document.getElementById('saveDot');d.classList.remove('saved');d.classList.add('pending');
 }
 
 // ─── NAV ───
@@ -1127,37 +1157,40 @@ function _updateWinBtns(card,winner){
 function setScore(id,field,val){
   const m=matches.find(m=>m.id===id);if(!m)return;
   m[field]=val;
-  if(m.s1!==''&&m.s2!==''){
-    const s1=+m.s1,s2=+m.s2;
-    m.winner=s1>s2?'A':s2>s1?'B':'';
-  }
+  // auto-set winner from scores — giống GM Authentic
+  const s1=parseInt(m.s1)||0,s2=parseInt(m.s2)||0;
+  if(m.s1!==''&&m.s2!==''&&s1!==s2)m.winner=s1>s2?'A':'B';
   const card=document.getElementById('mc-'+id);
   if(card){
-    if(m.s1!==''&&m.s2!=='')_updateWinBtns(card,m.winner);
+    _updateWinBtns(card,m.winner);
     const btn=card.querySelector('.save-btn');
     if(btn)btn.disabled=!canSaveMatch(m);
   }
-  debounceSave();
+  // Dùng timer riêng cho score, delay 1s — giống GM Authentic
+  clearTimeout(window._scoreTimer);setSaveDotPending();
+  window._scoreTimer=setTimeout(()=>save(),1000);
 }
 function setWinner(id,winner){
   const m=matches.find(m=>m.id===id);if(!m)return;
-  m.winner=winner;
-  // Chỉ set điểm mặc định nếu user CHƯA nhập điểm
-  const hasScore=m.s1!==''&&m.s2!=='';
-  if(!hasScore){
-    if(winner==='A'){m.s1='15';m.s2='0';}
-    else if(winner==='B'){m.s1='0';m.s2='15';}
+  m.winner=m.winner===winner?'':winner; // toggle giống GM Authentic
+  // Chỉ auto score khi rỗng hoặc đang ở giá trị auto (15:0 / 0:15)
+  const isAutoScore=(m.s1===''&&m.s2==='')||(m.s1==='15'&&m.s2==='0')||(m.s1==='0'&&m.s2==='15');
+  if(isAutoScore){
+    if(m.winner==='A'){m.s1='15';m.s2='0';}
+    else if(m.winner==='B'){m.s1='0';m.s2='15';}
     else{m.s1='';m.s2='';}
-  } else if(!winner){m.s1='';m.s2='';}
+  }
+  // Update UI không re-render toàn bộ — giống GM Authentic
   const card=document.getElementById('mc-'+id);
   if(card){
     const inputs=card.querySelectorAll('.sb');
     if(inputs[0])inputs[0].value=m.s1;
     if(inputs[1])inputs[1].value=m.s2;
-    _updateWinBtns(card,winner);
+    _updateWinBtns(card,m.winner);
     const btn=card.querySelector('.save-btn');
     if(btn)btn.disabled=!canSaveMatch(m);
   }
+  ignoreSseUntil=Date.now()+4000;
   debounceSave();
 }
 function setBet(id,val){
@@ -1176,25 +1209,17 @@ function saveMatch(id){
   const m=matches.find(m=>m.id===id);if(!m)return;
   if(!canSaveMatch(m))return;
   if(!m.bet||m.bet<=0)m.bet=DEFAULT_BET;
-  if(m.s1!==''&&m.s2!==''){
-    const s1=+m.s1,s2=+m.s2;
-    m.winner=s1>s2?'A':s2>s1?'B':'';
+  // Chỉ default score khi cả 2 rỗng — giống GM Authentic
+  if(m.s1===''&&m.s2===''){
+    if(m.winner==='A'){m.s1='15';m.s2='0';}
+    else if(m.winner==='B'){m.s1='0';m.s2='15';}
+    else{m.s1='0';m.s2='0';}
   }
+  if(!m.date)m.date=sessionDate||todayStr();
   m.saved=true;
-  // Thay card ngay tại chỗ, không re-render toàn bộ danh sách
-  const card=document.getElementById('mc-'+id);
-  if(card){card.outerHTML=rSaved(m);}
-  else{renderMatches();}
-  // Cập nhật label đếm
-  const unsavedCount=matches.filter(x=>!x.saved).length;
-  const label=document.querySelector('#mlist>div:first-child');
-  if(label&&label.textContent.includes('Đang diễn ra')){
-    if(unsavedCount===0)renderMatches();
-    else label.textContent='⚡ Đang diễn ra ('+unsavedCount+')';
-  }
-  // Lazy render hist: chỉ render khi tab hist đang mở, không render ngay
-  if(document.getElementById('pg-hist').classList.contains('on'))renderHist();
-  debounceSave();
+  renderMatches();
+  // Save ngay lập tức — giống GM Authentic (không debounce)
+  save();
 }
 
 let _openDays=new Set();
@@ -1205,6 +1230,37 @@ function toggleMatchDay(id){
   const arrow=document.getElementById(id+'-arrow');
   if(arrow)arrow.textContent=open?'▲':'▼';
   if(open)_openDays.add(id);else _openDays.delete(id);
+}
+
+// Giống GM Authentic: chỉ render lại phần saved, giữ nguyên card đang nhập
+function renderMatchesSaved(){
+  const el=document.getElementById('mlist');
+  if(!el)return;
+  const unsaved=matches.filter(m=>!m.saved);
+  // Nếu không có unsaved card nào thì full re-render
+  if(!unsaved.length){renderMatches();return;}
+  // Có unsaved card: snapshot giá trị input, render lại, restore
+  const snapshots={};
+  unsaved.forEach(m=>{
+    const mc=document.getElementById('mc-'+m.id);
+    if(!mc)return;
+    const snap={};
+    mc.querySelectorAll('input,select,textarea').forEach(inp=>{
+      if(inp.id||inp.className)snap[inp.id||inp.className]=inp.value;
+    });
+    snapshots[m.id]=snap;
+  });
+  renderMatches();
+  // Restore input values
+  unsaved.forEach(m=>{
+    const snap=snapshots[m.id];
+    if(!snap)return;
+    Object.entries(snap).forEach(([id,val])=>{
+      if(!id)return;
+      const el2=document.getElementById(id)||document.querySelector('.'+id.split(' ')[0]);
+      if(el2&&document.activeElement!==el2)el2.value=val;
+    });
+  });
 }
 
 function renderMatches(){
